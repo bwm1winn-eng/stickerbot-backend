@@ -31,7 +31,7 @@ app.post("/api/generate", async (req, res) => {
       `sticker, ${prompt.trim()}, cute cartoon vector style, thick outline, ` +
       `simple flat colors, white background, centered, high contrast`;
 
-    const NUM_IMAGES = 6;
+    const NUM_IMAGES = 4;
     const images = [];
 
     // Генерируем последовательно с паузой — у Pollinations.ai лимит для анонимных
@@ -54,7 +54,7 @@ app.post("/api/generate", async (req, res) => {
       // Пауза перед следующим запросом — у Pollinations строгий лимит
       // для анонимных запросов (~1 запрос за раз, минимум 15+ сек)
       if (i < NUM_IMAGES - 1) {
-        await new Promise((r) => setTimeout(r, 16000));
+        await new Promise((r) => setTimeout(r, 13000));
       }
     }
 
@@ -130,7 +130,7 @@ app.post("/api/add-to-pack", async (req, res) => {
 
 // ---------- Helpers ----------
 
-async function generateOneImage(prompt, retries = 2) {
+async function generateOneImage(prompt, retries = 4, attempt = 0) {
   const encodedPrompt = encodeURIComponent(prompt);
   const seed = Math.floor(Math.random() * 1000000);
   const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&seed=${seed}&nologo=true`;
@@ -138,9 +138,10 @@ async function generateOneImage(prompt, retries = 2) {
   const response = await fetch(url);
 
   if (response.status === 429 && retries > 0) {
-    // Сервис занят — подождём подольше и попробуем ещё раз
-    await new Promise((r) => setTimeout(r, 12000));
-    return generateOneImage(prompt, retries - 1);
+    // Очередь занята (общий IP на бесплатном хостинге) — ждём дольше с каждой попыткой
+    const wait = 15000 + attempt * 10000;
+    await new Promise((r) => setTimeout(r, wait));
+    return generateOneImage(prompt, retries - 1, attempt + 1);
   }
 
   if (!response.ok) {
