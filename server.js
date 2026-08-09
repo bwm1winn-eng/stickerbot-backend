@@ -8,11 +8,8 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
-const HF_TOKEN = process.env.HF_TOKEN;
 const BOT_TOKEN = process.env.BOT_TOKEN;
-const HF_MODEL = process.env.HF_MODEL || "black-forest-labs/FLUX.1-schnell";
 
-if (!HF_TOKEN) console.warn("⚠️  HF_TOKEN не задан — генерация не будет работать");
 if (!BOT_TOKEN) console.warn("⚠️  BOT_TOKEN не задан — добавление в стикерпак не будет работать");
 
 // In-memory хранилище последних сгенерированных картинок (для демо; на проде лучше в БД/S3)
@@ -37,7 +34,8 @@ app.post("/api/generate", async (req, res) => {
     const NUM_IMAGES = 6;
     const images = [];
 
-    // Генерируем последовательно (бесплатный тир HF не любит параллельные запросы)
+    // Генерируем последовательно с паузой — у Pollinations.ai лимит для анонимных
+    // запросов примерно 1 запрос в 15 секунд
     for (let i = 0; i < NUM_IMAGES; i++) {
       try {
         const buffer = await generateOneImage(stickerPrompt);
@@ -52,6 +50,10 @@ app.post("/api/generate", async (req, res) => {
       } catch (err) {
         console.error(`Ошибка генерации картинки #${i}:`, err.message);
         // Продолжаем, даже если одна картинка не получилась
+      }
+      // Небольшая пауза перед следующим запросом, чтобы не словить лимит
+      if (i < NUM_IMAGES - 1) {
+        await new Promise((r) => setTimeout(r, 3000));
       }
     }
 
@@ -128,21 +130,16 @@ app.post("/api/add-to-pack", async (req, res) => {
 // ---------- Helpers ----------
 
 async function generateOneImage(prompt) {
-  const response = await fetch(
-    `https://router.huggingface.co/hf-inference/models/${HF_MODEL}`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${HF_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ inputs: prompt }),
-    }
-  );
+  // Pollinations.ai — полностью бесплатный, без API-ключа
+  const encodedPrompt = encodeURIComponent(prompt);
+  const seed = Math.floor(Math.random() * 1000000);
+  const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&seed=${seed}&nologo=true`;
+
+  const response = await fetch(url);
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`HF API error ${response.status}: ${text.slice(0, 200)}`);
+    throw new Error(`Pollinations API error ${response.status}: ${text.slice(0, 200)}`);
   }
 
   const arrayBuffer = await response.arrayBuffer();
