@@ -10,7 +10,7 @@ app.use(express.json({ limit: "10mb" }));
 
 const HF_TOKEN = process.env.HF_TOKEN;
 const BOT_TOKEN = process.env.BOT_TOKEN;
-const HF_MODEL = process.env.HF_MODEL || "stabilityai/stable-diffusion-xl-base-1.0";
+const HF_MODEL = process.env.HF_MODEL || "black-forest-labs/FLUX.1-schnell";
 
 if (!HF_TOKEN) console.warn("⚠️  HF_TOKEN не задан — генерация не будет работать");
 if (!BOT_TOKEN) console.warn("⚠️  BOT_TOKEN не задан — добавление в стикерпак не будет работать");
