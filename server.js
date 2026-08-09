@@ -51,9 +51,10 @@ app.post("/api/generate", async (req, res) => {
         console.error(`Ошибка генерации картинки #${i}:`, err.message);
         // Продолжаем, даже если одна картинка не получилась
       }
-      // Небольшая пауза перед следующим запросом, чтобы не словить лимит
+      // Пауза перед следующим запросом — у Pollinations строгий лимит
+      // для анонимных запросов (~1 запрос за раз, минимум 15+ сек)
       if (i < NUM_IMAGES - 1) {
-        await new Promise((r) => setTimeout(r, 3000));
+        await new Promise((r) => setTimeout(r, 16000));
       }
     }
 
@@ -129,13 +130,18 @@ app.post("/api/add-to-pack", async (req, res) => {
 
 // ---------- Helpers ----------
 
-async function generateOneImage(prompt) {
-  // Pollinations.ai — полностью бесплатный, без API-ключа
+async function generateOneImage(prompt, retries = 2) {
   const encodedPrompt = encodeURIComponent(prompt);
   const seed = Math.floor(Math.random() * 1000000);
   const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&seed=${seed}&nologo=true`;
 
   const response = await fetch(url);
+
+  if (response.status === 429 && retries > 0) {
+    // Сервис занят — подождём подольше и попробуем ещё раз
+    await new Promise((r) => setTimeout(r, 12000));
+    return generateOneImage(prompt, retries - 1);
+  }
 
   if (!response.ok) {
     const text = await response.text();
