@@ -360,8 +360,9 @@ async function handleChatMessage(message) {
     });
 
     const fullPrompt = `${SYSTEM_CONTEXT}\n\nВопрос пользователя: ${text}`;
+    const keyParam = process.env.POLLINATIONS_KEY ? `?key=${process.env.POLLINATIONS_KEY}` : "";
     const aiResponse = await fetch(
-      `https://gen.pollinations.ai/text/${encodeURIComponent(fullPrompt)}`
+      `https://gen.pollinations.ai/text/${encodeURIComponent(fullPrompt)}${keyParam}`
     );
     const answer = (await aiResponse.text()).trim();
 
