@@ -22,7 +22,7 @@ const generatedCache = new Map();
  */
 app.post("/api/generate", async (req, res) => {
   try {
-    const { prompt, style } = req.body;
+    const { prompt, count } = req.body;
     if (!prompt || !prompt.trim()) {
       return res.status(400).json({ error: "prompt is required" });
     }
@@ -31,7 +31,7 @@ app.post("/api/generate", async (req, res) => {
       `sticker, ${prompt.trim()}, cute cartoon vector style, thick outline, ` +
       `simple flat colors, white background, centered, high contrast`;
 
-    const NUM_IMAGES = 4;
+    const NUM_IMAGES = Math.min(Math.max(parseInt(count, 10) || 4, 1), 4);
     const images = [];
 
     // Генерируем последовательно с паузой — у Pollinations.ai лимит для анонимных
@@ -232,4 +232,88 @@ async function addStickerToSet(userId, shortName, pngBuffer) {
 }
 
 const PORT = process.env.PORT || 3000;
+/**
+ * Пакеты покупки $ за Telegram Stars.
+ * "stars" — сколько звёзд стоит пакет, "amount" — сколько $ начисляется.
+ * Можешь менять цифры под себя.
+ */
+const STAR_PACKAGES = [
+  { id: "small", stars: 50, amount: 50, title: "50 $" },
+  { id: "medium", stars: 100, amount: 120, title: "120 $" },
+  { id: "large", stars: 250, amount: 350, title: "350 $" },
+];
+
+/**
+ * POST /api/create-invoice
+ * body: { packageId, initData }
+ * Создаёт ссылку на оплату через Telegram Stars.
+ */
+app.post("/api/create-invoice", async (req, res) => {
+  try {
+    const { packageId, initData } = req.body;
+    const pkg = STAR_PACKAGES.find((p) => p.id === packageId);
+    if (!pkg) return res.status(400).json({ error: "unknown package" });
+
+    const userId = extractUserId(initData);
+    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
+
+    const payload = JSON.stringify({ userId, packageId, amount: pkg.amount, ts: Date.now() });
+
+    const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/createInvoiceLink`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: pkg.title,
+        description: `Пополнение баланса на ${pkg.amount} $`,
+        payload,
+        currency: "XTR", // код валюты для Telegram Stars
+        prices: [{ label: pkg.title, amount: pkg.stars }],
+      }),
+    });
+    const data = await response.json();
+    if (!data.ok) return res.status(500).json({ error: data.description });
+
+    res.json({ link: data.result });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "internal error" });
+  }
+});
+
+/**
+ * POST /telegram-webhook
+ * Обязательный endpoint для приёма событий от Telegram: подтверждение оплаты
+ * (pre_checkout_query) и уведомление об успешной оплате (successful_payment).
+ */
+app.post("/telegram-webhook", async (req, res) => {
+  try {
+    const update = req.body;
+
+    if (update.pre_checkout_query) {
+      // Telegram спрашивает разрешения провести платёж — подтверждаем
+      await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerPreCheckoutQuery`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pre_checkout_query_id: update.pre_checkout_query.id,
+          ok: true,
+        }),
+      });
+    }
+
+    if (update.message?.successful_payment) {
+      const payload = JSON.parse(update.message.successful_payment.invoice_payload);
+      console.log(`✅ Оплата получена: user ${payload.userId}, +${payload.amount} $`);
+      // Здесь можно дополнительно писать баланс в базу данных на сервере.
+      // Сейчас баланс хранится в приложении на устройстве пользователя (localStorage),
+      // и обновляется сразу после успешной оплаты прямо во фронтенде.
+    }
+
+    res.sendStatus(200);
+  } catch (err) {
+    console.error("Webhook error:", err);
+    res.sendStatus(200); // Telegram не любит, когда webhook отвечает ошибкой
+  }
+});
+
 app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
