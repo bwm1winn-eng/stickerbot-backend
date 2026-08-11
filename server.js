@@ -304,9 +304,11 @@ app.post("/telegram-webhook", async (req, res) => {
     if (update.message?.successful_payment) {
       const payload = JSON.parse(update.message.successful_payment.invoice_payload);
       console.log(`✅ Оплата получена: user ${payload.userId}, +${payload.amount} $`);
-      // Здесь можно дополнительно писать баланс в базу данных на сервере.
-      // Сейчас баланс хранится в приложении на устройстве пользователя (localStorage),
-      // и обновляется сразу после успешной оплаты прямо во фронтенде.
+    }
+
+    // Обычные текстовые сообщения в чате с ботом (не в мини-аппе)
+    if (update.message?.text && !update.message.successful_payment) {
+      await handleChatMessage(update.message);
     }
 
     res.sendStatus(200);
@@ -315,5 +317,73 @@ app.post("/telegram-webhook", async (req, res) => {
     res.sendStatus(200); // Telegram не любит, когда webhook отвечает ошибкой
   }
 });
+
+const MINI_APP_URL = process.env.MINI_APP_URL || "";
+
+const SYSTEM_CONTEXT = `Ты — дружелюбный помощник Telegram-бота для генерации стикеров нейросетью.
+Как устроен бот: пользователь открывает кнопку меню внизу чата (мини-приложение),
+описывает идею текстом (например "гиппопотам в очках"), нажимает "Сгенерировать" —
+и получает несколько картинок. Генерация одной партии картинок стоит 5 внутренних
+долларов ($). Новым пользователям выдаётся 100 $ бесплатно. Если $ не хватает —
+можно сыграть в мини-игру "собери жетоны" (тап по монеткам 15 секунд) или купить
+$ за Telegram Stars прямо в приложении. Выбрав понравившиеся картинки, пользователь
+нажимает "Добавить в стикерпак", придумывает название — и стикеры сразу появляются
+в его личном списке стикерпаков в Telegram: их можно найти через встроенный поиск
+стикеров в любом чате (иконка стикеров в поле ввода сообщения → раздел "Мои наборы"),
+а управлять своими сохранёнными наборами (переименовать, удалить, посмотреть все)
+можно через официального Telegram-бота @Stickers — это встроенный сервис самого
+Telegram для администрирования стикерпаков, не наш бот, но он показывает все паки
+пользователя, включая созданные через нас. Если генерация не удалась — можно просто попробовать ещё раз,
+это бесплатный сервис и иногда он перегружен. Отвечай кратко, по-дружески,
+на языке вопроса пользователя (русский или английский). Если вопрос не связан
+с ботом и стикерами — вежливо верни разговор к теме бота.`;
+
+async function handleChatMessage(message) {
+  const chatId = message.chat.id;
+  const text = message.text.trim();
+
+  if (text === "/start") {
+    await sendTelegramMessage(
+      chatId,
+      "Привет! 👋 Я помогаю создавать стикеры с помощью нейросети.\n\n" +
+        "Нажми на кнопку меню внизу чата, чтобы открыть приложение, опиши идею — и получишь готовые стикеры.\n\n" +
+        "Если что-то не понятно — просто напиши мне вопрос прямо тут, отвечу."
+    );
+    return;
+  }
+
+  try {
+    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendChatAction`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, action: "typing" }),
+    });
+
+    const fullPrompt = `${SYSTEM_CONTEXT}\n\nВопрос пользователя: ${text}`;
+    const aiResponse = await fetch(
+      `https://gen.pollinations.ai/text/${encodeURIComponent(fullPrompt)}`
+    );
+    const answer = (await aiResponse.text()).trim();
+
+    await sendTelegramMessage(
+      chatId,
+      answer || "Не получилось сформулировать ответ, попробуй переспросить."
+    );
+  } catch (err) {
+    console.error("Chat AI error:", err.message);
+    await sendTelegramMessage(
+      chatId,
+      "Что-то пошло не так с ответом. Попробуй ещё раз чуть позже 🙏"
+    );
+  }
+}
+
+async function sendTelegramMessage(chatId, text) {
+  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, text }),
+  });
+}
 
 app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
