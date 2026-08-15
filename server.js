@@ -51,10 +51,9 @@ app.post("/api/generate", async (req, res) => {
         console.error(`Ошибка генерации картинки #${i}:`, err.message);
         // Продолжаем, даже если одна картинка не получилась
       }
-      // Пауза перед следующим запросом — у Pollinations строгий лимит
-      // для анонимных запросов (~1 запрос за раз, минимум 15+ сек)
+      // Небольшая пауза для стабильности (авторизованный ключ снимает жёсткий лимит)
       if (i < NUM_IMAGES - 1) {
-        await new Promise((r) => setTimeout(r, 13000));
+        await new Promise((r) => setTimeout(r, 1500));
       }
     }
 
@@ -130,16 +129,17 @@ app.post("/api/add-to-pack", async (req, res) => {
 
 // ---------- Helpers ----------
 
-async function generateOneImage(prompt, retries = 4, attempt = 0) {
+async function generateOneImage(prompt, retries = 2, attempt = 0) {
   const encodedPrompt = encodeURIComponent(prompt);
   const seed = Math.floor(Math.random() * 1000000);
-  const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&seed=${seed}&nologo=true`;
+  const keyParam = process.env.POLLINATIONS_KEY ? `&key=${process.env.POLLINATIONS_KEY}` : "";
+  // Используем авторизованный endpoint — быстрее и без общей очереди с чужими IP
+  const url = `https://gen.pollinations.ai/image/${encodedPrompt}?width=512&height=512&seed=${seed}&nologo=true${keyParam}`;
 
   const response = await fetch(url);
 
   if (response.status === 429 && retries > 0) {
-    // Очередь занята (общий IP на бесплатном хостинге) — ждём дольше с каждой попыткой
-    const wait = 15000 + attempt * 10000;
+    const wait = 5000 + attempt * 5000;
     await new Promise((r) => setTimeout(r, wait));
     return generateOneImage(prompt, retries - 1, attempt + 1);
   }
@@ -165,10 +165,19 @@ async function processToSticker(buffer) {
 }
 
 function slugify(str) {
-  return str
+  // Telegram требует: short_name состоит ТОЛЬКО из латинских букв, цифр и подчёркиваний,
+  // и обязательно начинается с буквы. Кириллица и любые другие символы сюда не годятся —
+  // название на русском, которое видит пользователь, никак не страдает,
+  // это чисто техническое имя "под капотом".
+  let slug = str
     .toLowerCase()
-    .replace(/[^a-z0-9а-яё]+/gi, "_")
-    .replace(/^_+|_+$/g, "") || "pack";
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+  if (!slug) slug = "pack";
+  if (!/^[a-z]/.test(slug)) slug = "s" + slug; // должно начинаться с буквы
+
+  return slug;
 }
 
 function extractUserId(initData) {
@@ -233,47 +242,67 @@ async function addStickerToSet(userId, shortName, pngBuffer) {
 
 const PORT = process.env.PORT || 3000;
 /**
- * Пакеты покупки $ за Telegram Stars.
- * "stars" — сколько звёзд стоит пакет, "amount" — сколько $ начисляется.
- * Можешь менять цифры под себя.
+ * Курс обмена: сколько $ начисляется за 1 Telegram Star.
+ * Сейчас: 1 звезда = 10 $. Пакеты ниже — просто готовые варианты для быстрого выбора,
+ * а /api/create-invoice поддерживает и произвольную сумму (10–10000 $).
  */
+const DOLLARS_PER_STAR = 10;
+const MIN_AMOUNT = 10;
+const MAX_AMOUNT = 10000;
+
 const STAR_PACKAGES = [
-  { id: "small", stars: 50, amount: 50, title: "50 $" },
-  { id: "medium", stars: 100, amount: 120, title: "120 $" },
-  { id: "large", stars: 250, amount: 350, title: "350 $" },
+  { id: "small", amount: 50 },   // 5 ⭐
+  { id: "large", amount: 500 },  // 50 ⭐
 ];
+
+function amountToStars(amount) {
+  return Math.max(1, Math.round(amount / DOLLARS_PER_STAR));
+}
 
 /**
  * POST /api/create-invoice
- * body: { packageId, initData }
+ * body: { packageId?, customAmount?, initData }
  * Создаёт ссылку на оплату через Telegram Stars.
+ * Либо передай packageId (готовый пакет), либо customAmount (своя сумма 10–10000).
  */
 app.post("/api/create-invoice", async (req, res) => {
   try {
-    const { packageId, initData } = req.body;
-    const pkg = STAR_PACKAGES.find((p) => p.id === packageId);
-    if (!pkg) return res.status(400).json({ error: "unknown package" });
+    const { packageId, customAmount, initData } = req.body;
 
+    let amount;
+    if (customAmount) {
+      amount = Math.round(Number(customAmount));
+      if (!amount || amount < MIN_AMOUNT || amount > MAX_AMOUNT) {
+        return res.status(400).json({ error: `amount must be between ${MIN_AMOUNT} and ${MAX_AMOUNT}` });
+      }
+    } else {
+      const pkg = STAR_PACKAGES.find((p) => p.id === packageId);
+      if (!pkg) return res.status(400).json({ error: "unknown package" });
+      amount = pkg.amount;
+    }
+
+    const stars = amountToStars(amount);
     const userId = extractUserId(initData);
     if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
 
-    const payload = JSON.stringify({ userId, packageId, amount: pkg.amount, ts: Date.now() });
+    const payload = JSON.stringify({ userId, amount, ts: Date.now() });
+    const title = `${amount} $`;
 
     const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/createInvoiceLink`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        title: pkg.title,
-        description: `Пополнение баланса на ${pkg.amount} $`,
+        title,
+        description: `Пополнение баланса на ${amount} $`,
         payload,
         currency: "XTR", // код валюты для Telegram Stars
-        prices: [{ label: pkg.title, amount: pkg.stars }],
+        prices: [{ label: title, amount: stars }],
       }),
     });
     const data = await response.json();
     if (!data.ok) return res.status(500).json({ error: data.description });
 
-    res.json({ link: data.result });
+    res.json({ link: data.result, amount, stars });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "internal error" });
@@ -386,5 +415,11 @@ async function sendTelegramMessage(chatId, text) {
     body: JSON.stringify({ chat_id: chatId, text }),
   });
 }
+
+// Простой health-check адрес — для внешнего "будильника" (UptimeRobot и т.п.),
+// чтобы бесплатный сервер на Render не засыпал от бездействия
+app.get("/", (req, res) => {
+  res.send("OK");
+});
 
 app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
