@@ -9,11 +9,110 @@ app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_KEY;
+const GEN_COST_PER_IMAGE = 5;
+const DEFAULT_BALANCE = 15;
 
 if (!BOT_TOKEN) console.warn("⚠️  BOT_TOKEN не задан — добавление в стикерпак не будет работать");
+if (!SUPABASE_URL || !SUPABASE_KEY) console.warn("⚠️  SUPABASE_URL/SUPABASE_KEY не заданы — баланс работать не будет");
 
 // In-memory хранилище последних сгенерированных картинок (для демо; на проде лучше в БД/S3)
 const generatedCache = new Map();
+// Последняя генерация каждого пользователя через чат (для команды /save) — user_id -> { ids, ts }
+const lastGenerationByUser = new Map();
+
+// ---------- Баланс пользователя: хранится в Supabase, привязан к Telegram user_id ----------
+
+async function supabaseRequest(path, options = {}) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    ...options,
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Supabase error ${res.status}: ${text.slice(0, 300)}`);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+async function getOrCreateBalance(userId) {
+  const rows = await supabaseRequest(`balances?user_id=eq.${userId}&select=balance`);
+  if (rows && rows.length > 0) return rows[0].balance;
+
+  const created = await supabaseRequest(`balances`, {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ user_id: userId, balance: DEFAULT_BALANCE }),
+  });
+  return created[0].balance;
+}
+
+/**
+ * Атомарно (насколько возможно без транзакций) меняет баланс на delta (может быть отрицательным).
+ * Возвращает новый баланс. Бросает ошибку, если средств не хватает (delta < 0 и итог был бы < 0).
+ */
+async function adjustBalance(userId, delta) {
+  const current = await getOrCreateBalance(userId);
+  const next = current + delta;
+  if (next < 0) {
+    const err = new Error("insufficient balance");
+    err.code = "INSUFFICIENT_BALANCE";
+    throw err;
+  }
+  const updated = await supabaseRequest(`balances?user_id=eq.${userId}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ balance: next }),
+  });
+  return updated[0].balance;
+}
+
+/**
+ * GET/POST /api/balance
+ * body: { initData }
+ * Возвращает текущий баланс пользователя (создаёт запись с 15 $, если это первый визит).
+ */
+app.post("/api/balance", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
+    const balance = await getOrCreateBalance(userId);
+    res.json({ balance });
+  } catch (err) {
+    console.error("Balance fetch error:", err.message);
+    res.status(500).json({ error: "internal error" });
+  }
+});
+
+/**
+ * POST /api/balance/adjust
+ * body: { initData, delta }
+ * Меняет баланс пользователя на delta (например -5 за генерацию, +3 за игру, +50 за покупку).
+ */
+app.post("/api/balance/adjust", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
+    const delta = Number(req.body.delta);
+    if (!Number.isFinite(delta) || delta === 0) {
+      return res.status(400).json({ error: "delta must be a non-zero number" });
+    }
+    const balance = await adjustBalance(userId, delta);
+    res.json({ balance });
+  } catch (err) {
+    if (err.code === "INSUFFICIENT_BALANCE") {
+      return res.status(400).json({ error: "insufficient balance" });
+    }
+    console.error("Balance adjust error:", err.message);
+    res.status(500).json({ error: "internal error" });
+  }
+});
 
 /**
  * POST /api/generate
@@ -22,51 +121,80 @@ const generatedCache = new Map();
  */
 app.post("/api/generate", async (req, res) => {
   try {
-    const { prompt, count } = req.body;
+    const { prompt, count, initData } = req.body;
     if (!prompt || !prompt.trim()) {
       return res.status(400).json({ error: "prompt is required" });
     }
 
-    const stickerPrompt =
-      `sticker, ${prompt.trim()}, cute cartoon vector style, thick outline, ` +
-      `simple flat colors, white background, centered, high contrast`;
+    const userId = extractUserId(initData);
+    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
 
     const NUM_IMAGES = Math.min(Math.max(parseInt(count, 10) || 4, 1), 4);
-    const images = [];
+    const cost = NUM_IMAGES * GEN_COST_PER_IMAGE; // 1=5$, 2=10$, 3=15$, 4=20$
 
-    // Генерируем последовательно с паузой — у Pollinations.ai лимит для анонимных
-    // запросов примерно 1 запрос в 15 секунд
-    for (let i = 0; i < NUM_IMAGES; i++) {
-      try {
-        const buffer = await generateOneImage(stickerPrompt);
-        const processed = await processToSticker(buffer);
-        const id = `${Date.now()}_${i}`;
-        generatedCache.set(id, processed);
-        images.push({
-          id,
-          url: `${req.protocol}://${req.get("host")}/api/image/${id}`,
-          animated: false, // анимация — отдельная фича, см. заметку в README
-        });
-      } catch (err) {
-        console.error(`Ошибка генерации картинки #${i}:`, err.message);
-        // Продолжаем, даже если одна картинка не получилась
+    let balanceAfterCharge;
+    try {
+      balanceAfterCharge = await adjustBalance(userId, -cost);
+    } catch (err) {
+      if (err.code === "INSUFFICIENT_BALANCE") {
+        return res.status(400).json({ error: "insufficient balance", code: "INSUFFICIENT_BALANCE" });
       }
-      // Небольшая пауза для стабильности (авторизованный ключ снимает жёсткий лимит)
-      if (i < NUM_IMAGES - 1) {
-        await new Promise((r) => setTimeout(r, 1500));
-      }
+      throw err;
     }
+
+    const images = await generateStickerSet(prompt, NUM_IMAGES, (id) => `${req.protocol}://${req.get("host")}/api/image/${id}`);
 
     if (images.length === 0) {
-      return res.status(502).json({ error: "Не удалось сгенерировать ни одной картинки. Попробуй ещё раз." });
+      // Ни одна картинка не получилась — возвращаем деньги на баланс
+      const refunded = await adjustBalance(userId, cost);
+      return res.status(502).json({
+        error: "Не удалось сгенерировать ни одной картинки. Попробуй ещё раз.",
+        balance: refunded,
+      });
     }
 
-    res.json({ images });
+    res.json({ images, balance: balanceAfterCharge, cost });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "internal error" });
   }
 });
+
+/**
+ * Генерирует набор стикеров (общая логика для мини-приложения и генерации через чат).
+ * urlBuilder — необязательная функция (id) => url, если нужны публичные ссылки на картинки.
+ * Возвращает массив { id, url?, animated }.
+ */
+async function generateStickerSet(prompt, numImages, urlBuilder) {
+  const stickerPrompt =
+    `sticker, ${prompt.trim()}, cute cartoon vector style, thick outline, ` +
+    `simple flat colors, white background, centered, high contrast`;
+
+  const images = [];
+
+  // Генерируем последовательно с паузой — у Pollinations.ai лимит для анонимных
+  // запросов примерно 1 запрос в 15 секунд
+  for (let i = 0; i < numImages; i++) {
+    try {
+      const buffer = await generateOneImage(stickerPrompt);
+      const processed = await processToSticker(buffer);
+      const id = `${Date.now()}_${i}`;
+      generatedCache.set(id, processed);
+      images.push({
+        id,
+        url: urlBuilder ? urlBuilder(id) : undefined,
+        animated: false,
+      });
+    } catch (err) {
+      console.error(`Ошибка генерации картинки #${i}:`, err.message);
+    }
+    if (i < numImages - 1) {
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+  }
+
+  return images;
+}
 
 /**
  * Отдаёт закешированную картинку по id
@@ -90,42 +218,49 @@ app.post("/api/add-to-pack", async (req, res) => {
       return res.status(400).json({ error: "packName and stickers are required" });
     }
 
-    // Извлекаем user_id из initData (Telegram подписывает эти данные)
     const userId = extractUserId(initData);
     if (!userId) {
       return res.status(400).json({ error: "cannot determine telegram user id" });
     }
 
-    const botUsername = await getBotUsername();
-    // short_name должен быть уникальным глобально и заканчиваться на _by_<botusername>
-    const shortName = `${slugify(packName)}_${Date.now()}`.slice(0, 50) + `_by_${botUsername}`;
-
-    let firstSticker = true;
-    for (const s of stickers) {
-      const buf = generatedCache.get(s.id);
-      if (!buf) continue;
-
-      if (firstSticker) {
-        await createStickerSet(userId, shortName, packName, buf);
-        firstSticker = false;
-      } else {
-        await addStickerToSet(userId, shortName, buf);
-      }
-    }
-
-    if (firstSticker) {
+    const ids = stickers.map((s) => s.id);
+    const packLink = await buildStickerPack(userId, packName, ids);
+    if (!packLink) {
       return res.status(400).json({ error: "no valid stickers found" });
     }
 
-    res.json({
-      ok: true,
-      packLink: `https://t.me/addstickers/${shortName}`,
-    });
+    res.json({ ok: true, packLink });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message || "internal error" });
   }
 });
+
+/**
+ * Общая логика создания стикерпака из массива id закешированных картинок.
+ * Используется и мини-приложением, и генерацией прямо в чате с ботом.
+ * Возвращает ссылку на пак, либо null, если не нашлось ни одной валидной картинки.
+ */
+async function buildStickerPack(userId, packName, ids) {
+  const botUsername = await getBotUsername();
+  const shortName = `${slugify(packName)}_${Date.now()}`.slice(0, 50) + `_by_${botUsername}`;
+
+  let firstSticker = true;
+  for (const id of ids) {
+    const buf = generatedCache.get(id);
+    if (!buf) continue;
+
+    if (firstSticker) {
+      await createStickerSet(userId, shortName, packName, buf);
+      firstSticker = false;
+    } else {
+      await addStickerToSet(userId, shortName, buf);
+    }
+  }
+
+  if (firstSticker) return null;
+  return `https://t.me/addstickers/${shortName}`;
+}
 
 // ---------- Helpers ----------
 
@@ -332,7 +467,16 @@ app.post("/telegram-webhook", async (req, res) => {
 
     if (update.message?.successful_payment) {
       const payload = JSON.parse(update.message.successful_payment.invoice_payload);
-      console.log(`✅ Оплата получена: user ${payload.userId}, +${payload.amount} $`);
+      try {
+        const newBalance = await adjustBalance(payload.userId, payload.amount);
+        console.log(`✅ Оплата зачислена: user ${payload.userId}, +${payload.amount} $ → баланс ${newBalance}`);
+        await sendTelegramMessage(
+          update.message.chat.id,
+          `Оплата прошла успешно! Начислено +${payload.amount} $. Текущий баланс: ${newBalance} $`
+        );
+      } catch (err) {
+        console.error("Ошибка зачисления оплаты:", err.message);
+      }
     }
 
     // Обычные текстовые сообщения в чате с ботом (не в мини-аппе)
@@ -350,16 +494,16 @@ app.post("/telegram-webhook", async (req, res) => {
 const MINI_APP_URL = process.env.MINI_APP_URL || "";
 
 const SYSTEM_CONTEXT = `Ты — дружелюбный помощник Telegram-бота для генерации стикеров нейросетью.
-Как устроен бот: пользователь открывает кнопку меню внизу чата (мини-приложение),
-описывает идею текстом (например "гиппопотам в очках"), нажимает "Сгенерировать" —
-и получает несколько картинок. Генерация одной партии картинок стоит 5 внутренних
-долларов ($). Новым пользователям выдаётся 100 $ бесплатно. Если $ не хватает —
-можно сыграть в мини-игру "собери жетоны" (тап по монеткам 15 секунд) или купить
-$ за Telegram Stars прямо в приложении. Выбрав понравившиеся картинки, пользователь
-нажимает "Добавить в стикерпак", придумывает название — и стикеры сразу появляются
-в его личном списке стикерпаков в Telegram: их можно найти через встроенный поиск
-стикеров в любом чате (иконка стикеров в поле ввода сообщения → раздел "Мои наборы"),
-а управлять своими сохранёнными наборами (переименовать, удалить, посмотреть все)
+Есть два способа создать стикеры: 1) через мини-приложение (кнопка меню внизу чата) —
+там можно выбрать количество картинок (1-4), играть в мини-игру за $, покупать $ за Stars;
+2) прямо в чате с ботом текстовыми командами: "/create описание" (например "/create гиппопотам
+в очках") генерирует 4 картинки и присылает их в чат, а дальше команда "/save название пака"
+сохраняет их как стикерпак. Стоимость генерации — 5 $ за одну картинку (то есть 4 картинки = 20 $).
+Новым пользователям выдаётся 15 $ бесплатно. Если $ не хватает — можно сыграть в мини-игру
+"Найди пары" в приложении (тап по баланс) или купить $ за Telegram Stars прямо в приложении.
+После сохранения стикеры сразу появляются в личном списке стикерпаков в Telegram: их можно найти
+через встроенный поиск стикеров в любом чате (иконка стикеров в поле ввода сообщения → раздел
+"Мои наборы"), а управлять своими сохранёнными наборами (переименовать, удалить, посмотреть все)
 можно через официального Telegram-бота @Stickers — это встроенный сервис самого
 Telegram для администрирования стикерпаков, не наш бот, но он показывает все паки
 пользователя, включая созданные через нас. Если генерация не удалась — можно просто попробовать ещё раз,
@@ -369,14 +513,124 @@ Telegram для администрирования стикерпаков, не 
 
 async function handleChatMessage(message) {
   const chatId = message.chat.id;
+  const fromId = message.from?.id;
   const text = message.text.trim();
+
+  // Секретные админ-команды — работают только для владельца (по Telegram ID),
+  // никому больше не видны и не доступны, не упоминаются в подсказках/справке.
+  const OWNER_ID = process.env.OWNER_TELEGRAM_ID ? Number(process.env.OWNER_TELEGRAM_ID) : null;
+  if (OWNER_ID && fromId === OWNER_ID) {
+    const setMatch = text.match(/^\/setbalance\s+(-?\d+)$/i);
+    const addMatch = text.match(/^\/addbalance\s+(-?\d+)$/i);
+
+    if (setMatch) {
+      const amount = parseInt(setMatch[1], 10);
+      await supabaseRequest(`balances?user_id=eq.${fromId}`, {
+        method: "PATCH",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify({ balance: amount }),
+      }).catch(async () => {
+        // записи ещё нет — создаём
+        await supabaseRequest(`balances`, {
+          method: "POST",
+          body: JSON.stringify({ user_id: fromId, balance: amount }),
+        });
+      });
+      await sendTelegramMessage(chatId, `✅ Баланс установлен: ${amount} $`);
+      return;
+    }
+
+    if (addMatch) {
+      const delta = parseInt(addMatch[1], 10);
+      const newBalance = await adjustBalance(fromId, delta);
+      await sendTelegramMessage(chatId, `✅ Баланс изменён на ${delta > 0 ? "+" : ""}${delta}. Текущий баланс: ${newBalance} $`);
+      return;
+    }
+
+    if (text === "/mybalance") {
+      const balance = await getOrCreateBalance(fromId);
+      await sendTelegramMessage(chatId, `Текущий баланс: ${balance} $`);
+      return;
+    }
+  }
 
   if (text === "/start") {
     await sendTelegramMessage(
       chatId,
       "Привет! 👋 Я помогаю создавать стикеры с помощью нейросети.\n\n" +
-        "Нажми на кнопку меню внизу чата, чтобы открыть приложение, опиши идею — и получишь готовые стикеры.\n\n" +
+        "Два способа:\n" +
+        "• Открой кнопку меню внизу чата — там удобное приложение с выбором количества картинок, играми и покупкой $\n" +
+        "• Или прямо тут в чате: напиши «/create описание», например «/create гиппопотам в очках», а потом «/save название» чтобы сохранить\n\n" +
         "Если что-то не понятно — просто напиши мне вопрос прямо тут, отвечу."
+    );
+    return;
+  }
+
+  const createMatch = text.match(/^\/(create|generate)\s+([\s\S]+)$/i);
+  if (createMatch) {
+    const description = createMatch[2].trim();
+    const CHAT_GEN_COUNT = 4;
+    const cost = CHAT_GEN_COUNT * GEN_COST_PER_IMAGE;
+
+    let balanceAfterCharge;
+    try {
+      balanceAfterCharge = await adjustBalance(fromId, -cost);
+    } catch (err) {
+      if (err.code === "INSUFFICIENT_BALANCE") {
+        await sendTelegramMessage(
+          chatId,
+          `Не хватает $ на генерацию (нужно ${cost} $). Пополни баланс через кнопку меню — в приложении можно ` +
+            `сыграть в мини-игру или купить $ за Telegram Stars.`
+        );
+        return;
+      }
+      throw err;
+    }
+
+    await sendTelegramMessage(chatId, `Генерирую ${CHAT_GEN_COUNT} стикера по описанию «${description}»… это может занять около минуты ✨`);
+
+    const images = await generateStickerSet(description, CHAT_GEN_COUNT);
+
+    if (images.length === 0) {
+      const refunded = await adjustBalance(fromId, cost);
+      await sendTelegramMessage(chatId, `Не получилось сгенерировать ни одной картинки — вернул ${cost} $ на баланс (сейчас ${refunded} $). Попробуй ещё раз.`);
+      return;
+    }
+
+    for (const img of images) {
+      const buf = generatedCache.get(img.id);
+      if (buf) await sendTelegramPhoto(chatId, buf);
+    }
+
+    lastGenerationByUser.set(fromId, { ids: images.map((i) => i.id), ts: Date.now() });
+
+    await sendTelegramMessage(
+      chatId,
+      `Готово! Списано ${cost} $ (осталось ${balanceAfterCharge} $).\n\n` +
+        `Чтобы сохранить всё это в стикерпак — напиши:\n/save Название пака`
+    );
+    return;
+  }
+
+  const saveMatch = text.match(/^\/save\s+([\s\S]+)$/i);
+  if (saveMatch) {
+    const packName = saveMatch[1].trim();
+    const pending = lastGenerationByUser.get(fromId);
+    if (!pending || Date.now() - pending.ts > 30 * 60 * 1000) {
+      await sendTelegramMessage(chatId, "Не нашёл недавно сгенерированных стикеров. Сначала используй /create <описание>.");
+      return;
+    }
+
+    const packLink = await buildStickerPack(fromId, packName, pending.ids);
+    if (!packLink) {
+      await sendTelegramMessage(chatId, "Не получилось сохранить стикерпак. Попробуй ещё раз.");
+      return;
+    }
+
+    lastGenerationByUser.delete(fromId);
+    await sendTelegramMessage(
+      chatId,
+      `✅ Стикерпак сохранён!\n${packLink}\n\nУправлять паками (переименовать, удалить, посмотреть все) можно через официального бота @Stickers.`
     );
     return;
   }
@@ -413,6 +667,16 @@ async function sendTelegramMessage(chatId, text) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ chat_id: chatId, text }),
+  });
+}
+
+async function sendTelegramPhoto(chatId, pngBuffer) {
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  form.append("photo", new Blob([pngBuffer], { type: "image/png" }), "sticker.png");
+  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+    method: "POST",
+    body: form,
   });
 }
 
