@@ -74,16 +74,19 @@ async function adjustBalance(userId, delta) {
 }
 
 /**
- * GET/POST /api/balance
+ * POST /api/balance
  * body: { initData }
  * Возвращает текущий баланс пользователя (создаёт запись с 15 $, если это первый визит).
+ * Также сообщает, является ли этот пользователь владельцем бота (isOwner) —
+ * фронтенд использует это, чтобы показать скрытую кнопку редактирования баланса только владельцу.
  */
 app.post("/api/balance", async (req, res) => {
   try {
     const userId = extractUserId(req.body.initData);
     if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
     const balance = await getOrCreateBalance(userId);
-    res.json({ balance });
+    const isOwner = isOwnerUser(userId);
+    res.json({ balance, isOwner });
   } catch (err) {
     console.error("Balance fetch error:", err.message);
     res.status(500).json({ error: "internal error" });
@@ -113,6 +116,41 @@ app.post("/api/balance/adjust", async (req, res) => {
     res.status(500).json({ error: "internal error" });
   }
 });
+
+/**
+ * POST /api/balance/set
+ * body: { initData, amount }
+ * Устанавливает баланс ровно в amount. Работает ТОЛЬКО для владельца (OWNER_TELEGRAM_ID) —
+ * для всех остальных пользователей возвращает 403, что бы они ни прислали.
+ */
+app.post("/api/balance/set", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
+    if (!isOwnerUser(userId)) return res.status(403).json({ error: "forbidden" });
+
+    const amount = Math.round(Number(req.body.amount));
+    if (!Number.isFinite(amount) || amount < 0) {
+      return res.status(400).json({ error: "amount must be a non-negative number" });
+    }
+
+    await getOrCreateBalance(userId); // гарантируем, что запись существует
+    const updated = await supabaseRequest(`balances?user_id=eq.${userId}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({ balance: amount }),
+    });
+    res.json({ balance: updated[0].balance });
+  } catch (err) {
+    console.error("Balance set error:", err.message);
+    res.status(500).json({ error: "internal error" });
+  }
+});
+
+function isOwnerUser(userId) {
+  const ownerId = process.env.OWNER_TELEGRAM_ID ? Number(process.env.OWNER_TELEGRAM_ID) : null;
+  return ownerId !== null && Number(userId) === ownerId;
+}
 
 /**
  * POST /api/generate
