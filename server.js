@@ -403,17 +403,17 @@ async function buildStickerPack(userId, packName, ids) {
 
 // ---------- Helpers ----------
 
-async function generateOneImage(prompt, retries = 2, attempt = 0) {
+async function generateOneImage(prompt, retries = 3, attempt = 0) {
   const encodedPrompt = encodeURIComponent(prompt);
   const seed = Math.floor(Math.random() * 1000000);
-  const keyParam = process.env.POLLINATIONS_KEY ? `&key=${process.env.POLLINATIONS_KEY}` : "";
-  // Используем авторизованный endpoint — быстрее и без общей очереди с чужими IP
-  const url = `https://gen.pollinations.ai/image/${encodedPrompt}?width=512&height=512&seed=${seed}&nologo=true${keyParam}`;
+  // Бесплатный endpoint без ключа — авторизованный (gen.pollinations.ai) теперь требует
+  // оплату ("pollen"), поэтому используем полностью бесплатный, просто чуть медленнее
+  const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&seed=${seed}&nologo=true`;
 
   const response = await fetch(url);
 
-  if (response.status === 429 && retries > 0) {
-    const wait = 5000 + attempt * 5000;
+  if ((response.status === 429 || response.status === 402) && retries > 0) {
+    const wait = 12000 + attempt * 8000;
     await new Promise((r) => setTimeout(r, wait));
     return generateOneImage(prompt, retries - 1, attempt + 1);
   }
@@ -808,6 +808,13 @@ async function handleChatMessage(message) {
     const aiResponse = await fetch(
       `https://gen.pollinations.ai/text/${encodeURIComponent(fullPrompt)}${keyParam}`
     );
+
+    if (aiResponse.status === 402) {
+      // Закончился баланс "pollen" на ключе — присылаем базовую справку вместо ошибки
+      await sendTelegramMessage(chatId, FALLBACK_HELP_TEXT);
+      return;
+    }
+
     const answer = (await aiResponse.text()).trim();
 
     await sendTelegramMessage(
@@ -816,12 +823,16 @@ async function handleChatMessage(message) {
     );
   } catch (err) {
     console.error("Chat AI error:", err.message);
-    await sendTelegramMessage(
-      chatId,
-      "Что-то пошло не так с ответом. Попробуй ещё раз чуть позже 🙏"
-    );
+    await sendTelegramMessage(chatId, FALLBACK_HELP_TEXT);
   }
 }
+
+const FALLBACK_HELP_TEXT =
+  "Сейчас не могу ответить через ИИ (сервис временно недоступен), но вот основное:\n\n" +
+  "• Генерация: открой меню внизу чата или напиши «/create описание»\n" +
+  "• Сохранить: выбери стикеры в приложении, или напиши «/save название» после /create\n" +
+  "• Найти сохранённое: иконка стикеров в поле ввода → «Мои наборы», или бот @Stickers\n" +
+  "• Не хватает $: сыграй в игру в приложении, купи за Stars, или спроси про промокод";
 
 async function sendTelegramMessage(chatId, text) {
   await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
