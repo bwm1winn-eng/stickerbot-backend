@@ -34,11 +34,16 @@ async function supabaseRequest(path, options = {}) {
       ...(options.headers || {}),
     },
   });
+  const raw = await res.text();
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Supabase error ${res.status}: ${text.slice(0, 300)}`);
+    throw new Error(`Supabase error ${res.status}: ${raw.slice(0, 300)}`);
   }
-  return res.status === 204 ? null : res.json();
+  if (!raw) return null; // Supabase иногда отвечает "успешно" с пустым телом — это нормально
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
 }
 
 async function getOrCreateBalance(userId) {
