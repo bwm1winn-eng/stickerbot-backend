@@ -153,6 +153,54 @@ function isOwnerUser(userId) {
 }
 
 /**
+ * POST /api/promo/redeem
+ * body: { code, initData }
+ * Погашает промокод: начисляет amount $, если код существует, ещё не исчерпан
+ * лимитом использований, и этот пользователь его ещё не применял.
+ */
+app.post("/api/promo/redeem", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
+
+    const code = String(req.body.code || "").trim().toUpperCase();
+    if (!code) return res.status(400).json({ error: "code is required" });
+
+    const codes = await supabaseRequest(`promo_codes?code=eq.${encodeURIComponent(code)}&select=*`);
+    if (!codes || codes.length === 0) {
+      return res.status(404).json({ error: "not_found", message: "Такого промокода не существует" });
+    }
+    const promo = codes[0];
+
+    if (promo.max_uses !== null && promo.uses_count >= promo.max_uses) {
+      return res.status(400).json({ error: "exhausted", message: "Промокод уже исчерпан" });
+    }
+
+    const already = await supabaseRequest(
+      `promo_redemptions?user_id=eq.${userId}&code=eq.${encodeURIComponent(code)}&select=user_id`
+    );
+    if (already && already.length > 0) {
+      return res.status(400).json({ error: "already_used", message: "Ты уже использовал этот промокод" });
+    }
+
+    await supabaseRequest(`promo_redemptions`, {
+      method: "POST",
+      body: JSON.stringify({ user_id: userId, code }),
+    });
+    await supabaseRequest(`promo_codes?code=eq.${encodeURIComponent(code)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ uses_count: promo.uses_count + 1 }),
+    });
+
+    const balance = await adjustBalance(userId, promo.amount);
+    res.json({ balance, amount: promo.amount });
+  } catch (err) {
+    console.error("Promo redeem error:", err.message);
+    res.status(500).json({ error: "internal error" });
+  }
+});
+
+/**
  * POST /api/generate
  * body: { prompt, style: "static"|"animated", initData }
  * Генерирует несколько картинок через Hugging Face Inference API.
@@ -245,15 +293,34 @@ app.get("/api/image/:id", (req, res) => {
 });
 
 /**
+ * POST /api/my-packs
+ * body: { initData }
+ * Возвращает список стикерпаков, которые этот пользователь уже создавал через бота.
+ */
+app.post("/api/my-packs", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
+
+    const packs = await supabaseRequest(`sticker_packs?user_id=eq.${userId}&select=short_name,title`);
+    res.json({ packs: packs || [] });
+  } catch (err) {
+    console.error("My-packs error:", err.message);
+    res.status(500).json({ error: "internal error" });
+  }
+});
+
+/**
  * POST /api/add-to-pack
- * body: { packName, stickers: [{id}], initData }
- * Создаёт (или дополняет) стикерпак пользователя через Telegram Bot API.
+ * body: { stickers: [{id}], initData, packName? | targetPackShortName? }
+ * Создаёт новый стикерпак (если передан packName) ЛИБО дополняет уже существующий
+ * (если передан targetPackShortName — короткое имя одного из ранее созданных паков).
  */
 app.post("/api/add-to-pack", async (req, res) => {
   try {
-    const { packName, stickers, initData } = req.body;
-    if (!packName || !stickers?.length) {
-      return res.status(400).json({ error: "packName and stickers are required" });
+    const { packName, targetPackShortName, stickers, initData } = req.body;
+    if (!stickers?.length || (!packName && !targetPackShortName)) {
+      return res.status(400).json({ error: "stickers and (packName or targetPackShortName) are required" });
     }
 
     const userId = extractUserId(initData);
@@ -262,9 +329,30 @@ app.post("/api/add-to-pack", async (req, res) => {
     }
 
     const ids = stickers.map((s) => s.id);
-    const packLink = await buildStickerPack(userId, packName, ids);
-    if (!packLink) {
-      return res.status(400).json({ error: "no valid stickers found" });
+    let packLink;
+
+    if (targetPackShortName) {
+      // Проверяем, что этот пак действительно принадлежит текущему пользователю
+      const owned = await supabaseRequest(
+        `sticker_packs?user_id=eq.${userId}&short_name=eq.${encodeURIComponent(targetPackShortName)}&select=short_name`
+      );
+      if (!owned || owned.length === 0) {
+        return res.status(403).json({ error: "pack not found or not yours" });
+      }
+      let addedAny = false;
+      for (const id of ids) {
+        const buf = generatedCache.get(id);
+        if (!buf) continue;
+        await addStickerToSet(userId, targetPackShortName, buf);
+        addedAny = true;
+      }
+      if (!addedAny) return res.status(400).json({ error: "no valid stickers found" });
+      packLink = `https://t.me/addstickers/${targetPackShortName}`;
+    } else {
+      packLink = await buildStickerPack(userId, packName, ids);
+      if (!packLink) {
+        return res.status(400).json({ error: "no valid stickers found" });
+      }
     }
 
     res.json({ ok: true, packLink });
@@ -278,6 +366,8 @@ app.post("/api/add-to-pack", async (req, res) => {
  * Общая логика создания стикерпака из массива id закешированных картинок.
  * Используется и мини-приложением, и генерацией прямо в чате с ботом.
  * Возвращает ссылку на пак, либо null, если не нашлось ни одной валидной картинки.
+ * Также запоминает пак в таблице sticker_packs, чтобы его можно было выбрать
+ * позже как "существующий" при следующем сохранении.
  */
 async function buildStickerPack(userId, packName, ids) {
   const botUsername = await getBotUsername();
@@ -297,6 +387,17 @@ async function buildStickerPack(userId, packName, ids) {
   }
 
   if (firstSticker) return null;
+
+  try {
+    await supabaseRequest(`sticker_packs`, {
+      method: "POST",
+      body: JSON.stringify({ short_name: shortName, user_id: userId, title: packName }),
+    });
+  } catch (err) {
+    console.error("Failed to record pack in sticker_packs:", err.message);
+    // Не критично — сам пак уже создан в Telegram, просто не появится в списке "существующих"
+  }
+
   return `https://t.me/addstickers/${shortName}`;
 }
 
@@ -588,6 +689,28 @@ async function handleChatMessage(message) {
     if (text === "/mybalance") {
       const balance = await getOrCreateBalance(fromId);
       await sendTelegramMessage(chatId, `Текущий баланс: ${balance} $`);
+      return;
+    }
+
+    // /createpromo КОД СУММА [ЛИМИТ_ИСПОЛЬЗОВАНИЙ]
+    const promoMatch = text.match(/^\/createpromo\s+(\S+)\s+(\d+)(?:\s+(\d+))?$/i);
+    if (promoMatch) {
+      const code = promoMatch[1].toUpperCase();
+      const amount = parseInt(promoMatch[2], 10);
+      const maxUses = promoMatch[3] ? parseInt(promoMatch[3], 10) : null;
+
+      try {
+        await supabaseRequest(`promo_codes`, {
+          method: "POST",
+          body: JSON.stringify({ code, amount, max_uses: maxUses, uses_count: 0 }),
+        });
+        await sendTelegramMessage(
+          chatId,
+          `✅ Промокод создан: ${code}\nНачисляет: ${amount} $\nЛимит использований: ${maxUses ?? "без ограничений"}`
+        );
+      } catch (err) {
+        await sendTelegramMessage(chatId, `Не получилось создать промокод (возможно, такой код уже существует): ${err.message}`);
+      }
       return;
     }
   }
