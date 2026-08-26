@@ -408,11 +408,37 @@ async function buildStickerPack(userId, packName, ids) {
 
 // ---------- Helpers ----------
 
-async function generateOneImage(prompt, retries = 3, attempt = 0) {
+async function generateOneImage(prompt) {
+  // Сначала пробуем качественный платный способ (если на балансе Pollinations
+  // есть деньги) — если средств не хватает или сервис недоступен, автоматически
+  // переходим на бесплатный (попроще качеством, но всегда работает).
+  if (process.env.POLLINATIONS_KEY) {
+    try {
+      return await generateViaPaidEndpoint(prompt);
+    } catch (err) {
+      console.warn(`Платный способ не сработал (${err.message}), переключаюсь на бесплатный`);
+    }
+  }
+  return generateViaFreeEndpoint(prompt);
+}
+
+async function generateViaPaidEndpoint(prompt) {
   const encodedPrompt = encodeURIComponent(prompt);
   const seed = Math.floor(Math.random() * 1000000);
-  // Бесплатный endpoint без ключа — авторизованный (gen.pollinations.ai) теперь требует
-  // оплату ("pollen"), поэтому используем полностью бесплатный, просто чуть медленнее
+  const url = `https://gen.pollinations.ai/image/${encodedPrompt}?width=512&height=512&seed=${seed}&nologo=true&key=${process.env.POLLINATIONS_KEY}`;
+
+  const response = await fetch(url);
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`paid endpoint ${response.status}: ${text.slice(0, 150)}`);
+  }
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+}
+
+async function generateViaFreeEndpoint(prompt, retries = 3, attempt = 0) {
+  const encodedPrompt = encodeURIComponent(prompt);
+  const seed = Math.floor(Math.random() * 1000000);
   const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&seed=${seed}&nologo=true`;
 
   const response = await fetch(url);
@@ -420,7 +446,7 @@ async function generateOneImage(prompt, retries = 3, attempt = 0) {
   if ((response.status === 429 || response.status === 402) && retries > 0) {
     const wait = 12000 + attempt * 8000;
     await new Promise((r) => setTimeout(r, wait));
-    return generateOneImage(prompt, retries - 1, attempt + 1);
+    return generateViaFreeEndpoint(prompt, retries - 1, attempt + 1);
   }
 
   if (!response.ok) {
