@@ -547,21 +547,45 @@ async function addStickerToSet(userId, shortName, pngBuffer) {
 
 const PORT = process.env.PORT || 3000;
 /**
- * Курс обмена: сколько $ начисляется за 1 Telegram Star.
- * Сейчас: 1 звезда = 10 $. Пакеты ниже — просто готовые варианты для быстрого выбора,
- * а /api/create-invoice поддерживает и произвольную сумму (10–10000 $).
+ * Курс обмена: сколько $ начисляется за 1 Telegram Star (до скидки).
+ * Чем больше сумма — тем больше скидка (плавно растёт между точками), максимум 15% при $5000+.
+ * ВАЖНО: эти же пороги продублированы во фронтенде (index.html, DISCOUNT_TIERS) для превью цены —
+ * если меняешь одно, меняй и другое, иначе показанная и реально списанная цена разойдутся.
  */
 const DOLLARS_PER_STAR = 10;
 const MIN_AMOUNT = 10;
 const MAX_AMOUNT = 10000;
 
-const STAR_PACKAGES = [
-  { id: "small", amount: 50 },   // 5 ⭐
-  { id: "large", amount: 500 },  // 50 ⭐
+const DISCOUNT_TIERS = [
+  { amount: 50, discount: 0 },
+  { amount: 500, discount: 0.08 },
+  { amount: 5000, discount: 0.15 },
 ];
 
+const STAR_PACKAGES = [
+  { id: "small", amount: 50 },
+  { id: "medium", amount: 500 },
+  { id: "large", amount: 5000 },
+];
+
+function discountForAmount(amount) {
+  if (amount <= DISCOUNT_TIERS[0].amount) return DISCOUNT_TIERS[0].discount;
+  const last = DISCOUNT_TIERS[DISCOUNT_TIERS.length - 1];
+  if (amount >= last.amount) return last.discount;
+  for (let i = 0; i < DISCOUNT_TIERS.length - 1; i++) {
+    const a = DISCOUNT_TIERS[i], b = DISCOUNT_TIERS[i + 1];
+    if (amount >= a.amount && amount <= b.amount) {
+      const t = (amount - a.amount) / (b.amount - a.amount);
+      return a.discount + t * (b.discount - a.discount);
+    }
+  }
+  return 0;
+}
+
 function amountToStars(amount) {
-  return Math.max(1, Math.round(amount / DOLLARS_PER_STAR));
+  const baseStars = amount / DOLLARS_PER_STAR;
+  const discount = discountForAmount(amount);
+  return Math.max(1, Math.round(baseStars * (1 - discount)));
 }
 
 /**
