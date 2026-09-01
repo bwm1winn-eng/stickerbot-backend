@@ -294,6 +294,10 @@ app.get("/api/image/:id", (req, res) => {
   const buf = generatedCache.get(req.params.id);
   if (!buf) return res.status(404).send("not found");
   res.set("Content-Type", "image/png");
+  // ?download=1 — просим браузер сохранить файл, а не открыть его в новой вкладке
+  if (req.query.download) {
+    res.set("Content-Disposition", `attachment; filename="sticker_${req.params.id}.png"`);
+  }
   res.send(buf);
 });
 
@@ -687,6 +691,28 @@ app.post("/telegram-webhook", async (req, res) => {
 
 const MINI_APP_URL = process.env.MINI_APP_URL || "";
 
+const WELCOME_TEXT =
+  "Привет! 👋✨ Я — бот, который рисует стикеры с помощью нейросети.\n\n" +
+  "🎨 <b>Как создать стикеры</b>\n" +
+  "Два способа на выбор:\n" +
+  "1️⃣ Кнопка меню внизу чата — там удобное приложение: выбор количества картинок, игра «Найди пары» за $, покупка $ за Stars\n" +
+  "2️⃣ Прямо тут, текстом:\n" +
+  "   <code>/create гиппопотам в очках</code> — сгенерирует 4 картинки\n" +
+  "   <code>/save Мои гиппопотамы</code> — сохранит их как стикерпак\n\n" +
+  "💬 Не понял что-то — просто напиши мне вопрос, отвечу.\n" +
+  "📋 Все команды сразу — напиши /help";
+
+const HELP_COMMANDS_TEXT =
+  "📋 <b>Все команды</b>\n\n" +
+  "🎨 <b>Создание стикеров</b>\n" +
+  "<code>/create описание</code> — сгенерировать 4 стикера (20 $)\n" +
+  "<code>/save название пака</code> — сохранить последнюю генерацию\n\n" +
+  "💰 <b>Баланс</b>\n" +
+  "У новых — 15 $ бесплатно. Не хватает? Открой приложение — там игра «Найди пары» (до 5 $ за раз) или покупка $ за Telegram Stars, либо спроси про промокод.\n\n" +
+  "🔍 <b>Где сохранённые стикеры</b>\n" +
+  "Иконка стикеров в поле ввода сообщения → «Мои наборы». Управлять паками (переименовать, удалить) — через официального бота @Stickers.\n\n" +
+  "❓Любой другой вопрос — просто напиши текстом, отвечу.";
+
 const SYSTEM_CONTEXT = `Ты — дружелюбный помощник Telegram-бота для генерации стикеров нейросетью.
 Есть два способа создать стикеры: 1) через мини-приложение (кнопка меню внизу чата) —
 там можно выбрать количество картинок (1-4), играть в мини-игру за $, покупать $ за Stars;
@@ -771,14 +797,12 @@ async function handleChatMessage(message) {
   }
 
   if (text === "/start") {
-    await sendTelegramMessage(
-      chatId,
-      "Привет! 👋 Я помогаю создавать стикеры с помощью нейросети.\n\n" +
-        "Два способа:\n" +
-        "• Открой кнопку меню внизу чата — там удобное приложение с выбором количества картинок, играми и покупкой $\n" +
-        "• Или прямо тут в чате: напиши «/create описание», например «/create гиппопотам в очках», а потом «/save название» чтобы сохранить\n\n" +
-        "Если что-то не понятно — просто напиши мне вопрос прямо тут, отвечу."
-    );
+    await sendTelegramMessageHTML(chatId, WELCOME_TEXT);
+    return;
+  }
+
+  if (text === "/help") {
+    await sendTelegramMessageHTML(chatId, HELP_COMMANDS_TEXT);
     return;
   }
 
@@ -894,6 +918,18 @@ async function sendTelegramMessage(chatId, text) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ chat_id: chatId, text }),
+  });
+}
+
+// Отдельная версия с HTML-разметкой (жирный, код) — используем ТОЛЬКО для заранее
+// заданных текстов (WELCOME_TEXT, HELP_COMMANDS_TEXT), никогда для текста, куда
+// подставляются пользовательские данные или сообщения об ошибках — иначе случайный
+// символ "<" или "&" сломает отправку сообщения целиком.
+async function sendTelegramMessageHTML(chatId, html) {
+  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, text: html, parse_mode: "HTML" }),
   });
 }
 
