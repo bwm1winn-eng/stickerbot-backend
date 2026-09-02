@@ -47,15 +47,37 @@ async function supabaseRequest(path, options = {}) {
 }
 
 async function getOrCreateBalance(userId) {
-  const rows = await supabaseRequest(`balances?user_id=eq.${userId}&select=balance`);
-  if (rows && rows.length > 0) return rows[0].balance;
+  const row = await getOrCreateUserRow(userId);
+  return row.balance;
+}
+
+/**
+ * Возвращает всю запись пользователя (баланс, число генераций, оставшиеся попытки
+ * в играх Plinko/Dice), создавая её при первом визите.
+ */
+async function getOrCreateUserRow(userId) {
+  const rows = await supabaseRequest(
+    `balances?user_id=eq.${userId}&select=balance,gen_count,plinko_attempts,dice_attempts`
+  );
+  if (rows && rows.length > 0) return rows[0];
 
   const created = await supabaseRequest(`balances`, {
     method: "POST",
     headers: { Prefer: "return=representation" },
-    body: JSON.stringify({ user_id: userId, balance: DEFAULT_BALANCE }),
+    body: JSON.stringify({ user_id: userId, balance: DEFAULT_BALANCE, gen_count: 0, plinko_attempts: 0, dice_attempts: 0 }),
   });
-  return created[0].balance;
+  return created[0];
+}
+
+/**
+ * Увеличивает счётчик успешных генераций пользователя на 1 (для разблокировки игр).
+ */
+async function incrementGenCount(userId) {
+  const row = await getOrCreateUserRow(userId);
+  await supabaseRequest(`balances?user_id=eq.${userId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ gen_count: (row.gen_count || 0) + 1 }),
+  });
 }
 
 /**
@@ -85,13 +107,33 @@ async function adjustBalance(userId, delta) {
  * Также сообщает, является ли этот пользователь владельцем бота (isOwner) —
  * фронтенд использует это, чтобы показать скрытую кнопку редактирования баланса только владельцу.
  */
+const PLINKO_UNLOCK_AT = 10;
+const DICE_UNLOCK_AT = 20;
+const GAME_FREE_ATTEMPTS = 5;
+
 app.post("/api/balance", async (req, res) => {
   try {
     const userId = extractUserId(req.body.initData);
     if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
-    const balance = await getOrCreateBalance(userId);
+    const row = await getOrCreateUserRow(userId);
     const isOwner = isOwnerUser(userId);
-    res.json({ balance, isOwner });
+    res.json({
+      balance: row.balance,
+      isOwner,
+      genCount: row.gen_count || 0,
+      games: {
+        plinko: {
+          unlocked: (row.gen_count || 0) >= PLINKO_UNLOCK_AT,
+          unlockAt: PLINKO_UNLOCK_AT,
+          attemptsLeft: Math.max(0, GAME_FREE_ATTEMPTS - (row.plinko_attempts || 0)),
+        },
+        dice: {
+          unlocked: (row.gen_count || 0) >= DICE_UNLOCK_AT,
+          unlockAt: DICE_UNLOCK_AT,
+          attemptsLeft: Math.max(0, GAME_FREE_ATTEMPTS - (row.dice_attempts || 0)),
+        },
+      },
+    });
   } catch (err) {
     console.error("Balance fetch error:", err.message);
     res.status(500).json({ error: "internal error" });
@@ -206,6 +248,110 @@ app.post("/api/promo/redeem", async (req, res) => {
 });
 
 /**
+ * Взвешенный случайный выбор приза. table — массив { min, max, weight }.
+ * Возвращает случайное целое число из выбранного диапазона.
+ */
+function weightedPrize(table) {
+  const totalWeight = table.reduce((sum, t) => sum + t.weight, 0);
+  let roll = Math.random() * totalWeight;
+  for (const tier of table) {
+    if (roll < tier.weight) {
+      return Math.floor(tier.min + Math.random() * (tier.max - tier.min + 1));
+    }
+    roll -= tier.weight;
+  }
+  return table[0].min;
+}
+
+// Таблица призов Plinko — как в настоящем плинко: край доски редкий, но даёт много;
+// центр — частый, но скромный приз. Итого от 1 до 10 000 $.
+const PLINKO_PRIZE_TABLE = [
+  { min: 1, max: 5, weight: 55 },
+  { min: 10, max: 50, weight: 25 },
+  { min: 100, max: 500, weight: 12 },
+  { min: 1000, max: 3000, weight: 6 },
+  { min: 5000, max: 10000, weight: 2 },
+];
+// 9 слотов внизу доски — индекс определяет, где визуально останавливается шарик.
+// Крайние слоты (0 и 8) — самые редкие/крупные призы, центр — частые/мелкие.
+const PLINKO_SLOT_TIERS = [4, 3, 2, 1, 0, 1, 2, 3, 4]; // индекс в PLINKO_PRIZE_TABLE (по убыванию редкости к центру)
+
+app.post("/api/games/plinko/play", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
+
+    const row = await getOrCreateUserRow(userId);
+    if ((row.gen_count || 0) < PLINKO_UNLOCK_AT) {
+      return res.status(403).json({ error: "locked", message: `Разблокируется после ${PLINKO_UNLOCK_AT}-й генерации` });
+    }
+    const attemptsUsed = row.plinko_attempts || 0;
+    if (attemptsUsed >= GAME_FREE_ATTEMPTS) {
+      return res.status(400).json({ error: "no_attempts", message: "Бесплатные попытки закончились" });
+    }
+
+    // Выбираем случайный "слот" (для анимации), приз соответствует его редкости
+    const slotIndex = Math.floor(Math.random() * PLINKO_SLOT_TIERS.length);
+    const tierIndex = PLINKO_SLOT_TIERS[slotIndex];
+    const prize = Math.floor(
+      PLINKO_PRIZE_TABLE[tierIndex].min +
+        Math.random() * (PLINKO_PRIZE_TABLE[tierIndex].max - PLINKO_PRIZE_TABLE[tierIndex].min + 1)
+    );
+
+    await supabaseRequest(`balances?user_id=eq.${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ plinko_attempts: attemptsUsed + 1 }),
+    });
+    const balance = await adjustBalance(userId, prize);
+
+    res.json({ prize, balance, slotIndex, attemptsLeft: GAME_FREE_ATTEMPTS - (attemptsUsed + 1) });
+  } catch (err) {
+    console.error("Plinko play error:", err.message);
+    res.status(500).json({ error: "internal error" });
+  }
+});
+
+// Таблица призов для костей — та же логика, суммы попроще (разблокируется позже, 20-я генерация)
+const DICE_PRIZE_TABLE = [
+  { min: 1, max: 5, weight: 50 },
+  { min: 10, max: 30, weight: 28 },
+  { min: 50, max: 200, weight: 14 },
+  { min: 500, max: 1500, weight: 6 },
+  { min: 3000, max: 7000, weight: 2 },
+];
+
+app.post("/api/games/dice/play", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
+
+    const row = await getOrCreateUserRow(userId);
+    if ((row.gen_count || 0) < DICE_UNLOCK_AT) {
+      return res.status(403).json({ error: "locked", message: `Разблокируется после ${DICE_UNLOCK_AT}-й генерации` });
+    }
+    const attemptsUsed = row.dice_attempts || 0;
+    if (attemptsUsed >= GAME_FREE_ATTEMPTS) {
+      return res.status(400).json({ error: "no_attempts", message: "Бесплатные попытки закончились" });
+    }
+
+    const die1 = 1 + Math.floor(Math.random() * 6);
+    const die2 = 1 + Math.floor(Math.random() * 6);
+    const prize = weightedPrize(DICE_PRIZE_TABLE);
+
+    await supabaseRequest(`balances?user_id=eq.${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ dice_attempts: attemptsUsed + 1 }),
+    });
+    const balance = await adjustBalance(userId, prize);
+
+    res.json({ prize, balance, die1, die2, attemptsLeft: GAME_FREE_ATTEMPTS - (attemptsUsed + 1) });
+  } catch (err) {
+    console.error("Dice play error:", err.message);
+    res.status(500).json({ error: "internal error" });
+  }
+});
+
+/**
  * POST /api/generate
  * body: { prompt, style: "static"|"animated", initData }
  * Генерирует несколько картинок через Hugging Face Inference API.
@@ -243,6 +389,8 @@ app.post("/api/generate", async (req, res) => {
         balance: refunded,
       });
     }
+
+    await incrementGenCount(userId);
 
     res.json({ images, balance: balanceAfterCharge, cost });
   } catch (err) {
@@ -836,6 +984,8 @@ async function handleChatMessage(message) {
       await sendTelegramMessage(chatId, `Не получилось сгенерировать ни одной картинки — вернул ${cost} $ на баланс (сейчас ${refunded} $). Попробуй ещё раз.`);
       return;
     }
+
+    await incrementGenCount(fromId);
 
     for (const img of images) {
       const buf = generatedCache.get(img.id);
