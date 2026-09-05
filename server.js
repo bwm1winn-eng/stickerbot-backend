@@ -52,32 +52,18 @@ async function getOrCreateBalance(userId) {
 }
 
 /**
- * Возвращает всю запись пользователя (баланс, число генераций, оставшиеся попытки
- * в играх Plinko/Dice), создавая её при первом визите.
+ * Возвращает запись баланса пользователя, создавая её при первом визите.
  */
 async function getOrCreateUserRow(userId) {
-  const rows = await supabaseRequest(
-    `balances?user_id=eq.${userId}&select=balance,gen_count,plinko_attempts,dice_attempts`
-  );
+  const rows = await supabaseRequest(`balances?user_id=eq.${userId}&select=balance`);
   if (rows && rows.length > 0) return rows[0];
 
   const created = await supabaseRequest(`balances`, {
     method: "POST",
     headers: { Prefer: "return=representation" },
-    body: JSON.stringify({ user_id: userId, balance: DEFAULT_BALANCE, gen_count: 0, plinko_attempts: 0, dice_attempts: 0 }),
+    body: JSON.stringify({ user_id: userId, balance: DEFAULT_BALANCE }),
   });
   return created[0];
-}
-
-/**
- * Увеличивает счётчик успешных генераций пользователя на 1 (для разблокировки игр).
- */
-async function incrementGenCount(userId) {
-  const row = await getOrCreateUserRow(userId);
-  await supabaseRequest(`balances?user_id=eq.${userId}`, {
-    method: "PATCH",
-    body: JSON.stringify({ gen_count: (row.gen_count || 0) + 1 }),
-  });
 }
 
 /**
@@ -107,31 +93,24 @@ async function adjustBalance(userId, delta) {
  * Также сообщает, является ли этот пользователь владельцем бота (isOwner) —
  * фронтенд использует это, чтобы показать скрытую кнопку редактирования баланса только владельцу.
  */
-const PLINKO_UNLOCK_AT = 10;
-const DICE_UNLOCK_AT = 20;
-const GAME_FREE_ATTEMPTS = 5;
-
 app.post("/api/balance", async (req, res) => {
   try {
     const userId = extractUserId(req.body.initData);
     if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
     const row = await getOrCreateUserRow(userId);
     const isOwner = isOwnerUser(userId);
+
+    // Заодно проверяем и начисляем ежедневный бонус для активных подписчиков
+    const sub = await getOrCreateSubscription(userId);
+    const bonusApplied = await maybeApplyDailyBonus(userId, sub);
+    const balance = bonusApplied > 0 ? await getOrCreateBalance(userId) : row.balance;
+
     res.json({
-      balance: row.balance,
+      balance,
       isOwner,
-      genCount: row.gen_count || 0,
-      games: {
-        plinko: {
-          unlocked: (row.gen_count || 0) >= PLINKO_UNLOCK_AT,
-          unlockAt: PLINKO_UNLOCK_AT,
-          attemptsLeft: Math.max(0, GAME_FREE_ATTEMPTS - (row.plinko_attempts || 0)),
-        },
-        dice: {
-          unlocked: (row.gen_count || 0) >= DICE_UNLOCK_AT,
-          unlockAt: DICE_UNLOCK_AT,
-          attemptsLeft: Math.max(0, GAME_FREE_ATTEMPTS - (row.dice_attempts || 0)),
-        },
+      premium: {
+        active: isSubActive(sub),
+        expiresAt: sub.expires_at,
       },
     });
   } catch (err) {
@@ -199,6 +178,125 @@ function isOwnerUser(userId) {
   return ownerId !== null && Number(userId) === ownerId;
 }
 
+// ---------- Премиум-подписка через Telegram Stars ----------
+// Первая покупка стоит 1⭐ (пробная цена), дальнейшие продления — 50⭐.
+// Подписка даёт: максимальный приоритет генерации (без пауз между картинками),
+// уникальный премиум-стиль стикеров, скидку на генерацию, увеличенный лимит
+// картинок за раз и ежедневный бонус $ на баланс, пока подписка активна.
+const SUB_FIRST_PRICE_STARS = 1;
+const SUB_RENEW_PRICE_STARS = 50;
+const SUB_DURATION_DAYS = 30;
+const SUB_DAILY_BONUS = 20; // $ в день для активных подписчиков
+const SUB_GEN_DISCOUNT_PER_IMAGE = 2; // премиум платит 3 $ за картинку вместо 5 $
+const SUB_MAX_IMAGES = 10; // премиум может генерировать до 10 картинок за раз вместо 4
+const PREMIUM_PROMPT_SUFFIX =
+  ", premium glossy sticker finish, subtle gold rim light, extra detailed shading, polished professional look";
+
+async function getOrCreateSubscription(userId) {
+  const rows = await supabaseRequest(
+    `subscriptions?user_id=eq.${userId}&select=user_id,active,expires_at,first_purchase_done,last_bonus_date`
+  );
+  if (rows && rows.length > 0) return rows[0];
+
+  const created = await supabaseRequest(`subscriptions`, {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ user_id: userId, active: false, expires_at: null, first_purchase_done: false }),
+  });
+  return created[0];
+}
+
+function isSubActive(sub) {
+  return !!(sub && sub.active && sub.expires_at && new Date(sub.expires_at).getTime() > Date.now());
+}
+
+/**
+ * Если у пользователя активна подписка и бонус за сегодня ещё не выдавался —
+ * начисляет SUB_DAILY_BONUS $ и запоминает дату. Возвращает начисленную сумму (0, если бонус уже был).
+ */
+async function maybeApplyDailyBonus(userId, sub) {
+  if (!isSubActive(sub)) return 0;
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  if (sub.last_bonus_date === today) return 0;
+
+  await adjustBalance(userId, SUB_DAILY_BONUS);
+  await supabaseRequest(`subscriptions?user_id=eq.${userId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ last_bonus_date: today }),
+  });
+  return SUB_DAILY_BONUS;
+}
+
+/**
+ * POST /api/subscription/status
+ * body: { initData }
+ * Возвращает текущий статус подписки, следующую цену продления и применяет
+ * ежедневный бонус, если он ещё не был выдан сегодня.
+ */
+app.post("/api/subscription/status", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
+
+    const sub = await getOrCreateSubscription(userId);
+    const bonusApplied = await maybeApplyDailyBonus(userId, sub);
+    const balance = bonusApplied > 0 ? await getOrCreateBalance(userId) : undefined;
+
+    res.json({
+      active: isSubActive(sub),
+      expiresAt: sub.expires_at,
+      nextPriceStars: sub.first_purchase_done ? SUB_RENEW_PRICE_STARS : SUB_FIRST_PRICE_STARS,
+      perks: {
+        maxImages: SUB_MAX_IMAGES,
+        costPerImage: GEN_COST_PER_IMAGE - SUB_GEN_DISCOUNT_PER_IMAGE,
+        dailyBonus: SUB_DAILY_BONUS,
+      },
+      bonusApplied,
+      ...(balance !== undefined ? { balance } : {}),
+    });
+  } catch (err) {
+    console.error("Subscription status error:", err.message);
+    res.status(500).json({ error: "internal error" });
+  }
+});
+
+/**
+ * POST /api/subscription/create-invoice
+ * body: { initData }
+ * Создаёт счёт на оплату подписки через Telegram Stars: 1⭐ за первую покупку,
+ * 50⭐ за каждое следующее продление.
+ */
+app.post("/api/subscription/create-invoice", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
+
+    const sub = await getOrCreateSubscription(userId);
+    const stars = sub.first_purchase_done ? SUB_RENEW_PRICE_STARS : SUB_FIRST_PRICE_STARS;
+    const title = sub.first_purchase_done ? "Premium — продление" : "Premium — первый месяц";
+    const payload = JSON.stringify({ type: "subscription", userId, ts: Date.now() });
+
+    const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/createInvoiceLink`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title,
+        description: `Премиум-подписка на ${SUB_DURATION_DAYS} дней: приоритет генерации, премиум-стиль, скидка на картинки, ежедневный бонус.`,
+        payload,
+        currency: "XTR",
+        prices: [{ label: title, amount: stars }],
+      }),
+    });
+    const data = await response.json();
+    if (!data.ok) return res.status(500).json({ error: data.description });
+
+    res.json({ link: data.result, stars });
+  } catch (err) {
+    console.error("Subscription invoice error:", err.message);
+    res.status(500).json({ error: "internal error" });
+  }
+});
+
 /**
  * POST /api/promo/redeem
  * body: { code, initData }
@@ -248,110 +346,6 @@ app.post("/api/promo/redeem", async (req, res) => {
 });
 
 /**
- * Взвешенный случайный выбор приза. table — массив { min, max, weight }.
- * Возвращает случайное целое число из выбранного диапазона.
- */
-function weightedPrize(table) {
-  const totalWeight = table.reduce((sum, t) => sum + t.weight, 0);
-  let roll = Math.random() * totalWeight;
-  for (const tier of table) {
-    if (roll < tier.weight) {
-      return Math.floor(tier.min + Math.random() * (tier.max - tier.min + 1));
-    }
-    roll -= tier.weight;
-  }
-  return table[0].min;
-}
-
-// Таблица призов Plinko — как в настоящем плинко: край доски редкий, но даёт много;
-// центр — частый, но скромный приз. Итого от 1 до 10 000 $.
-const PLINKO_PRIZE_TABLE = [
-  { min: 1, max: 5, weight: 55 },
-  { min: 10, max: 50, weight: 25 },
-  { min: 100, max: 500, weight: 12 },
-  { min: 1000, max: 3000, weight: 6 },
-  { min: 5000, max: 10000, weight: 2 },
-];
-// 9 слотов внизу доски — индекс определяет, где визуально останавливается шарик.
-// Крайние слоты (0 и 8) — самые редкие/крупные призы, центр — частые/мелкие.
-const PLINKO_SLOT_TIERS = [4, 3, 2, 1, 0, 1, 2, 3, 4]; // индекс в PLINKO_PRIZE_TABLE (по убыванию редкости к центру)
-
-app.post("/api/games/plinko/play", async (req, res) => {
-  try {
-    const userId = extractUserId(req.body.initData);
-    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
-
-    const row = await getOrCreateUserRow(userId);
-    if ((row.gen_count || 0) < PLINKO_UNLOCK_AT) {
-      return res.status(403).json({ error: "locked", message: `Разблокируется после ${PLINKO_UNLOCK_AT}-й генерации` });
-    }
-    const attemptsUsed = row.plinko_attempts || 0;
-    if (attemptsUsed >= GAME_FREE_ATTEMPTS) {
-      return res.status(400).json({ error: "no_attempts", message: "Бесплатные попытки закончились" });
-    }
-
-    // Выбираем случайный "слот" (для анимации), приз соответствует его редкости
-    const slotIndex = Math.floor(Math.random() * PLINKO_SLOT_TIERS.length);
-    const tierIndex = PLINKO_SLOT_TIERS[slotIndex];
-    const prize = Math.floor(
-      PLINKO_PRIZE_TABLE[tierIndex].min +
-        Math.random() * (PLINKO_PRIZE_TABLE[tierIndex].max - PLINKO_PRIZE_TABLE[tierIndex].min + 1)
-    );
-
-    await supabaseRequest(`balances?user_id=eq.${userId}`, {
-      method: "PATCH",
-      body: JSON.stringify({ plinko_attempts: attemptsUsed + 1 }),
-    });
-    const balance = await adjustBalance(userId, prize);
-
-    res.json({ prize, balance, slotIndex, attemptsLeft: GAME_FREE_ATTEMPTS - (attemptsUsed + 1) });
-  } catch (err) {
-    console.error("Plinko play error:", err.message);
-    res.status(500).json({ error: "internal error" });
-  }
-});
-
-// Таблица призов для костей — та же логика, суммы попроще (разблокируется позже, 20-я генерация)
-const DICE_PRIZE_TABLE = [
-  { min: 1, max: 5, weight: 50 },
-  { min: 10, max: 30, weight: 28 },
-  { min: 50, max: 200, weight: 14 },
-  { min: 500, max: 1500, weight: 6 },
-  { min: 3000, max: 7000, weight: 2 },
-];
-
-app.post("/api/games/dice/play", async (req, res) => {
-  try {
-    const userId = extractUserId(req.body.initData);
-    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
-
-    const row = await getOrCreateUserRow(userId);
-    if ((row.gen_count || 0) < DICE_UNLOCK_AT) {
-      return res.status(403).json({ error: "locked", message: `Разблокируется после ${DICE_UNLOCK_AT}-й генерации` });
-    }
-    const attemptsUsed = row.dice_attempts || 0;
-    if (attemptsUsed >= GAME_FREE_ATTEMPTS) {
-      return res.status(400).json({ error: "no_attempts", message: "Бесплатные попытки закончились" });
-    }
-
-    const die1 = 1 + Math.floor(Math.random() * 6);
-    const die2 = 1 + Math.floor(Math.random() * 6);
-    const prize = weightedPrize(DICE_PRIZE_TABLE);
-
-    await supabaseRequest(`balances?user_id=eq.${userId}`, {
-      method: "PATCH",
-      body: JSON.stringify({ dice_attempts: attemptsUsed + 1 }),
-    });
-    const balance = await adjustBalance(userId, prize);
-
-    res.json({ prize, balance, die1, die2, attemptsLeft: GAME_FREE_ATTEMPTS - (attemptsUsed + 1) });
-  } catch (err) {
-    console.error("Dice play error:", err.message);
-    res.status(500).json({ error: "internal error" });
-  }
-});
-
-/**
  * POST /api/generate
  * body: { prompt, style: "static"|"animated", initData }
  * Генерирует несколько картинок через Hugging Face Inference API.
@@ -366,8 +360,13 @@ app.post("/api/generate", async (req, res) => {
     const userId = extractUserId(initData);
     if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
 
-    const NUM_IMAGES = Math.min(Math.max(parseInt(count, 10) || 4, 1), 4);
-    const cost = NUM_IMAGES * GEN_COST_PER_IMAGE; // 1=5$, 2=10$, 3=15$, 4=20$
+    const sub = await getOrCreateSubscription(userId);
+    const premium = isSubActive(sub);
+    const maxImages = premium ? SUB_MAX_IMAGES : 4;
+    const costPerImage = premium ? GEN_COST_PER_IMAGE - SUB_GEN_DISCOUNT_PER_IMAGE : GEN_COST_PER_IMAGE;
+
+    const NUM_IMAGES = Math.min(Math.max(parseInt(count, 10) || 4, 1), maxImages);
+    const cost = NUM_IMAGES * costPerImage;
 
     let balanceAfterCharge;
     try {
@@ -379,7 +378,12 @@ app.post("/api/generate", async (req, res) => {
       throw err;
     }
 
-    const images = await generateStickerSet(prompt, NUM_IMAGES, (id) => `${req.protocol}://${req.get("host")}/api/image/${id}`);
+    const images = await generateStickerSet(
+      prompt,
+      NUM_IMAGES,
+      (id) => `${req.protocol}://${req.get("host")}/api/image/${id}`,
+      { premium }
+    );
 
     if (images.length === 0) {
       // Ни одна картинка не получилась — возвращаем деньги на баланс
@@ -389,8 +393,6 @@ app.post("/api/generate", async (req, res) => {
         balance: refunded,
       });
     }
-
-    await incrementGenCount(userId);
 
     res.json({ images, balance: balanceAfterCharge, cost });
   } catch (err) {
@@ -404,15 +406,18 @@ app.post("/api/generate", async (req, res) => {
  * urlBuilder — необязательная функция (id) => url, если нужны публичные ссылки на картинки.
  * Возвращает массив { id, url?, animated }.
  */
-async function generateStickerSet(prompt, numImages, urlBuilder) {
+async function generateStickerSet(prompt, numImages, urlBuilder, options = {}) {
+  const { premium = false } = options;
   const stickerPrompt =
     `sticker, ${prompt.trim()}, cute cartoon vector style, thick outline, ` +
-    `simple flat colors, white background, centered, high contrast`;
+    `simple flat colors, white background, centered, high contrast` +
+    (premium ? PREMIUM_PROMPT_SUFFIX : "");
 
   const images = [];
 
   // Генерируем последовательно с паузой — у Pollinations.ai лимит для анонимных
-  // запросов примерно 1 запрос в 15 секунд
+  // запросов примерно 1 запрос в 15 секунд. У премиум-подписчиков максимальный
+  // приоритет — генерируем без искусственной паузы между картинками.
   for (let i = 0; i < numImages; i++) {
     try {
       const buffer = await generateOneImage(stickerPrompt);
@@ -427,7 +432,7 @@ async function generateStickerSet(prompt, numImages, urlBuilder) {
     } catch (err) {
       console.error(`Ошибка генерации картинки #${i}:`, err.message);
     }
-    if (i < numImages - 1) {
+    if (!premium && i < numImages - 1) {
       await new Promise((r) => setTimeout(r, 1500));
     }
   }
@@ -766,7 +771,7 @@ app.post("/api/create-invoice", async (req, res) => {
     const userId = extractUserId(initData);
     if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
 
-    const payload = JSON.stringify({ userId, amount, ts: Date.now() });
+    const payload = JSON.stringify({ type: "balance", userId, amount, ts: Date.now() });
     const title = `${amount} $`;
 
     const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/createInvoiceLink`, {
@@ -814,12 +819,35 @@ app.post("/telegram-webhook", async (req, res) => {
     if (update.message?.successful_payment) {
       const payload = JSON.parse(update.message.successful_payment.invoice_payload);
       try {
-        const newBalance = await adjustBalance(payload.userId, payload.amount);
-        console.log(`✅ Оплата зачислена: user ${payload.userId}, +${payload.amount} $ → баланс ${newBalance}`);
-        await sendTelegramMessage(
-          update.message.chat.id,
-          `Оплата прошла успешно! Начислено +${payload.amount} $. Текущий баланс: ${newBalance} $`
-        );
+        if (payload.type === "subscription") {
+          const sub = await getOrCreateSubscription(payload.userId);
+          // Если подписка ещё активна — продлеваем от текущей даты окончания, а не от "сейчас"
+          const base =
+            isSubActive(sub) && sub.expires_at ? new Date(sub.expires_at) : new Date();
+          const expiresAt = new Date(base.getTime() + SUB_DURATION_DAYS * 24 * 60 * 60 * 1000);
+
+          await supabaseRequest(`subscriptions?user_id=eq.${payload.userId}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              active: true,
+              expires_at: expiresAt.toISOString(),
+              first_purchase_done: true,
+            }),
+          });
+
+          console.log(`✅ Premium активирован: user ${payload.userId}, до ${expiresAt.toISOString()}`);
+          await sendTelegramMessage(
+            update.message.chat.id,
+            `🔴 Premium активирован! Действует до ${expiresAt.toLocaleDateString("ru-RU")}.`
+          );
+        } else {
+          const newBalance = await adjustBalance(payload.userId, payload.amount);
+          console.log(`✅ Оплата зачислена: user ${payload.userId}, +${payload.amount} $ → баланс ${newBalance}`);
+          await sendTelegramMessage(
+            update.message.chat.id,
+            `Оплата прошла успешно! Начислено +${payload.amount} $. Текущий баланс: ${newBalance} $`
+          );
+        }
       } catch (err) {
         console.error("Ошибка зачисления оплаты:", err.message);
       }
@@ -857,6 +885,8 @@ const HELP_COMMANDS_TEXT =
   "<code>/save название пака</code> — сохранить последнюю генерацию\n\n" +
   "💰 <b>Баланс</b>\n" +
   "У новых — 15 $ бесплатно. Не хватает? Открой приложение — там игра «Найди пары» (до 5 $ за раз) или покупка $ за Telegram Stars, либо спроси про промокод.\n\n" +
+  "🔴 <b>Premium</b>\n" +
+  "Максимальный приоритет генерации, уникальный премиум-стиль, скидка на картинки, до 10 стикеров за раз и ежедневный бонус $. Первый месяц — 1⭐, дальше 50⭐. Кнопка Premium — в приложении.\n\n" +
   "🔍 <b>Где сохранённые стикеры</b>\n" +
   "Иконка стикеров в поле ввода сообщения → «Мои наборы». Управлять паками (переименовать, удалить) — через официального бота @Stickers.\n\n" +
   "❓Любой другой вопрос — просто напиши текстом, отвечу.";
@@ -869,6 +899,10 @@ const SYSTEM_CONTEXT = `Ты — дружелюбный помощник Telegra
 сохраняет их как стикерпак. Стоимость генерации — 5 $ за одну картинку (то есть 4 картинки = 20 $).
 Новым пользователям выдаётся 15 $ бесплатно. Если $ не хватает — можно сыграть в мини-игру
 "Найди пары" в приложении (тап по баланс) или купить $ за Telegram Stars прямо в приложении.
+Также есть платная Premium-подписка (кнопка в приложении): первый месяц стоит 1 Telegram Star,
+дальнейшие продления — 50 Stars. Она даёт максимальный приоритет генерации (без пауз между
+картинками), уникальный премиум-стиль стикеров, скидку на генерацию (3 $ за картинку вместо 5 $),
+до 10 картинок за раз вместо 4, и ежедневный бонус 20 $ на баланс, пока подписка активна.
 После сохранения стикеры сразу появляются в личном списке стикерпаков в Telegram: их можно найти
 через встроенный поиск стикеров в любом чате (иконка стикеров в поле ввода сообщения → раздел
 "Мои наборы"), а управлять своими сохранёнными наборами (переименовать, удалить, посмотреть все)
@@ -984,8 +1018,6 @@ async function handleChatMessage(message) {
       await sendTelegramMessage(chatId, `Не получилось сгенерировать ни одной картинки — вернул ${cost} $ на баланс (сейчас ${refunded} $). Попробуй ещё раз.`);
       return;
     }
-
-    await incrementGenCount(fromId);
 
     for (const img of images) {
       const buf = generatedCache.get(img.id);
