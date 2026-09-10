@@ -17,12 +17,8 @@ const DEFAULT_BALANCE = 15;
 if (!BOT_TOKEN) console.warn("⚠️  BOT_TOKEN не задан — добавление в стикерпак не будет работать");
 if (!SUPABASE_URL || !SUPABASE_KEY) console.warn("⚠️  SUPABASE_URL/SUPABASE_KEY не заданы — баланс работать не будет");
 
-// In-memory хранилище последних сгенерированных картинок (для демо; на проде лучше в БД/S3)
 const generatedCache = new Map();
-// Последняя генерация каждого пользователя через чат (для команды /save) — user_id -> { ids, ts }
 const lastGenerationByUser = new Map();
-
-// ---------- Баланс пользователя: хранится в Supabase, привязан к Telegram user_id ----------
 
 async function supabaseRequest(path, options = {}) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
@@ -38,7 +34,7 @@ async function supabaseRequest(path, options = {}) {
   if (!res.ok) {
     throw new Error(`Supabase error ${res.status}: ${raw.slice(0, 300)}`);
   }
-  if (!raw) return null; // Supabase иногда отвечает "успешно" с пустым телом — это нормально
+  if (!raw) return null;
   try {
     return JSON.parse(raw);
   } catch {
@@ -51,9 +47,6 @@ async function getOrCreateBalance(userId) {
   return row.balance;
 }
 
-/**
- * Возвращает запись баланса пользователя, создавая её при первом визите.
- */
 async function getOrCreateUserRow(userId) {
   const rows = await supabaseRequest(`balances?user_id=eq.${userId}&select=balance`);
   if (rows && rows.length > 0) return rows[0];
@@ -66,10 +59,6 @@ async function getOrCreateUserRow(userId) {
   return created[0];
 }
 
-/**
- * Атомарно (насколько возможно без транзакций) меняет баланс на delta (может быть отрицательным).
- * Возвращает новый баланс. Бросает ошибку, если средств не хватает (delta < 0 и итог был бы < 0).
- */
 async function adjustBalance(userId, delta) {
   const current = await getOrCreateBalance(userId);
   const next = current + delta;
@@ -86,13 +75,6 @@ async function adjustBalance(userId, delta) {
   return updated[0].balance;
 }
 
-/**
- * POST /api/balance
- * body: { initData }
- * Возвращает текущий баланс пользователя (создаёт запись с 15 $, если это первый визит).
- * Также сообщает, является ли этот пользователь владельцем бота (isOwner) —
- * фронтенд использует это, чтобы показать скрытую кнопку редактирования баланса только владельцу.
- */
 app.post("/api/balance", async (req, res) => {
   try {
     const userId = extractUserId(req.body.initData);
@@ -100,7 +82,6 @@ app.post("/api/balance", async (req, res) => {
     const row = await getOrCreateUserRow(userId);
     const isOwner = isOwnerUser(userId);
 
-    // Заодно проверяем и начисляем ежедневный бонус для активных подписчиков
     const sub = await getOrCreateSubscription(userId);
     const bonusApplied = await maybeApplyDailyBonus(userId, sub);
     const balance = bonusApplied > 0 ? await getOrCreateBalance(userId) : row.balance;
@@ -110,6 +91,7 @@ app.post("/api/balance", async (req, res) => {
       isOwner,
       premium: {
         active: isSubActive(sub),
+        tier: isSubActive(sub) ? sub.tier : null,
         expiresAt: sub.expires_at,
       },
     });
@@ -119,11 +101,6 @@ app.post("/api/balance", async (req, res) => {
   }
 });
 
-/**
- * POST /api/balance/adjust
- * body: { initData, delta }
- * Меняет баланс пользователя на delta (например -5 за генерацию, +3 за игру, +50 за покупку).
- */
 app.post("/api/balance/adjust", async (req, res) => {
   try {
     const userId = extractUserId(req.body.initData);
@@ -143,12 +120,6 @@ app.post("/api/balance/adjust", async (req, res) => {
   }
 });
 
-/**
- * POST /api/balance/set
- * body: { initData, amount }
- * Устанавливает баланс ровно в amount. Работает ТОЛЬКО для владельца (OWNER_TELEGRAM_ID) —
- * для всех остальных пользователей возвращает 403, что бы они ни прислали.
- */
 app.post("/api/balance/set", async (req, res) => {
   try {
     const userId = extractUserId(req.body.initData);
@@ -160,7 +131,7 @@ app.post("/api/balance/set", async (req, res) => {
       return res.status(400).json({ error: "amount must be a non-negative number" });
     }
 
-    await getOrCreateBalance(userId); // гарантируем, что запись существует
+    await getOrCreateBalance(userId);
     const updated = await supabaseRequest(`balances?user_id=eq.${userId}`, {
       method: "PATCH",
       headers: { Prefer: "return=representation" },
@@ -178,30 +149,52 @@ function isOwnerUser(userId) {
   return ownerId !== null && Number(userId) === ownerId;
 }
 
-// ---------- Премиум-подписка через Telegram Stars ----------
-// Первая покупка стоит 1⭐ (пробная цена), дальнейшие продления — 50⭐.
-// Подписка даёт: максимальный приоритет генерации (без пауз между картинками),
-// уникальный премиум-стиль стикеров, скидку на генерацию, увеличенный лимит
-// картинок за раз и ежедневный бонус $ на баланс, пока подписка активна.
-const SUB_FIRST_PRICE_STARS = 1;
-const SUB_RENEW_PRICE_STARS = 50;
-const SUB_DURATION_DAYS = 30;
-const SUB_DAILY_BONUS = 20; // $ в день для активных подписчиков
-const SUB_GEN_DISCOUNT_PER_IMAGE = 2; // премиум платит 3 $ за картинку вместо 5 $
-const SUB_MAX_IMAGES = 10; // премиум может генерировать до 10 картинок за раз вместо 4
-const PREMIUM_PROMPT_SUFFIX =
+// ---------- Premium-подписка через Telegram Stars: два уровня, Standard и Luxury ----------
+const SUBSCRIPTION_FIRST_PRICE_STARS = 1;
+const SUBSCRIPTION_DURATION_DAYS = 30;
+
+const LUXURY_PROMPT_SUFFIX =
   ", premium glossy sticker finish, subtle gold rim light, extra detailed shading, polished professional look";
+const STANDARD_PROMPT_SUFFIX =
+  ", clean crisp sticker finish, soft shading, polished look";
+
+const TIERS = {
+  standard: {
+    label: "Standard",
+    renewStars: 30,
+    discountPerImage: 1,
+    maxImages: 6,
+    dailyBonus: 10,
+    generationPauseMs: 700,
+    promptSuffix: STANDARD_PROMPT_SUFFIX,
+  },
+  luxury: {
+    label: "Luxury",
+    renewStars: 75,
+    discountPerImage: 3,
+    maxImages: 10,
+    dailyBonus: 30,
+    generationPauseMs: 0,
+    promptSuffix: LUXURY_PROMPT_SUFFIX,
+  },
+};
 
 async function getOrCreateSubscription(userId) {
   const rows = await supabaseRequest(
-    `subscriptions?user_id=eq.${userId}&select=user_id,active,expires_at,first_purchase_done,last_bonus_date`
+    `subscriptions?user_id=eq.${userId}&select=user_id,active,expires_at,first_purchase_done,last_bonus_date,tier`
   );
   if (rows && rows.length > 0) return rows[0];
 
   const created = await supabaseRequest(`subscriptions`, {
     method: "POST",
     headers: { Prefer: "return=representation" },
-    body: JSON.stringify({ user_id: userId, active: false, expires_at: null, first_purchase_done: false }),
+    body: JSON.stringify({
+      user_id: userId,
+      active: false,
+      expires_at: null,
+      first_purchase_done: false,
+      tier: null,
+    }),
   });
   return created[0];
 }
@@ -210,29 +203,25 @@ function isSubActive(sub) {
   return !!(sub && sub.active && sub.expires_at && new Date(sub.expires_at).getTime() > Date.now());
 }
 
-/**
- * Если у пользователя активна подписка и бонус за сегодня ещё не выдавался —
- * начисляет SUB_DAILY_BONUS $ и запоминает дату. Возвращает начисленную сумму (0, если бонус уже был).
- */
+function tierConfig(sub) {
+  if (!isSubActive(sub)) return null;
+  return TIERS[sub.tier] || null;
+}
+
 async function maybeApplyDailyBonus(userId, sub) {
-  if (!isSubActive(sub)) return 0;
-  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const cfg = tierConfig(sub);
+  if (!cfg) return 0;
+  const today = new Date().toISOString().slice(0, 10);
   if (sub.last_bonus_date === today) return 0;
 
-  await adjustBalance(userId, SUB_DAILY_BONUS);
+  await adjustBalance(userId, cfg.dailyBonus);
   await supabaseRequest(`subscriptions?user_id=eq.${userId}`, {
     method: "PATCH",
     body: JSON.stringify({ last_bonus_date: today }),
   });
-  return SUB_DAILY_BONUS;
+  return cfg.dailyBonus;
 }
 
-/**
- * POST /api/subscription/status
- * body: { initData }
- * Возвращает текущий статус подписки, следующую цену продления и применяет
- * ежедневный бонус, если он ещё не был выдан сегодня.
- */
 app.post("/api/subscription/status", async (req, res) => {
   try {
     const userId = extractUserId(req.body.initData);
@@ -241,16 +230,25 @@ app.post("/api/subscription/status", async (req, res) => {
     const sub = await getOrCreateSubscription(userId);
     const bonusApplied = await maybeApplyDailyBonus(userId, sub);
     const balance = bonusApplied > 0 ? await getOrCreateBalance(userId) : undefined;
+    const active = isSubActive(sub);
+    const cfg = tierConfig(sub);
 
     res.json({
-      active: isSubActive(sub),
+      active,
+      tier: active ? sub.tier : null,
       expiresAt: sub.expires_at,
-      nextPriceStars: sub.first_purchase_done ? SUB_RENEW_PRICE_STARS : SUB_FIRST_PRICE_STARS,
-      perks: {
-        maxImages: SUB_MAX_IMAGES,
-        costPerImage: GEN_COST_PER_IMAGE - SUB_GEN_DISCOUNT_PER_IMAGE,
-        dailyBonus: SUB_DAILY_BONUS,
+      pricing: {
+        standard: { firstStars: SUBSCRIPTION_FIRST_PRICE_STARS, renewStars: TIERS.standard.renewStars },
+        luxury: { firstStars: SUBSCRIPTION_FIRST_PRICE_STARS, renewStars: TIERS.luxury.renewStars },
+        firstPurchaseDone: !!sub.first_purchase_done,
       },
+      perks: cfg
+        ? {
+            maxImages: cfg.maxImages,
+            costPerImage: GEN_COST_PER_IMAGE - cfg.discountPerImage,
+            dailyBonus: cfg.dailyBonus,
+          }
+        : null,
       bonusApplied,
       ...(balance !== undefined ? { balance } : {}),
     });
@@ -260,28 +258,25 @@ app.post("/api/subscription/status", async (req, res) => {
   }
 });
 
-/**
- * POST /api/subscription/create-invoice
- * body: { initData }
- * Создаёт счёт на оплату подписки через Telegram Stars: 1⭐ за первую покупку,
- * 50⭐ за каждое следующее продление.
- */
 app.post("/api/subscription/create-invoice", async (req, res) => {
   try {
     const userId = extractUserId(req.body.initData);
     if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
 
+    const tier = req.body.tier === "luxury" ? "luxury" : "standard";
+    const cfg = TIERS[tier];
+
     const sub = await getOrCreateSubscription(userId);
-    const stars = sub.first_purchase_done ? SUB_RENEW_PRICE_STARS : SUB_FIRST_PRICE_STARS;
-    const title = sub.first_purchase_done ? "Premium — продление" : "Premium — первый месяц";
-    const payload = JSON.stringify({ type: "subscription", userId, ts: Date.now() });
+    const stars = sub.first_purchase_done ? cfg.renewStars : SUBSCRIPTION_FIRST_PRICE_STARS;
+    const title = sub.first_purchase_done ? `${cfg.label} — продление` : `${cfg.label} — первый месяц`;
+    const payload = JSON.stringify({ type: "subscription", tier, userId, ts: Date.now() });
 
     const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/createInvoiceLink`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title,
-        description: `Премиум-подписка на ${SUB_DURATION_DAYS} дней: приоритет генерации, премиум-стиль, скидка на картинки, ежедневный бонус.`,
+        description: `${cfg.label}-подписка на ${SUBSCRIPTION_DURATION_DAYS} дней: приоритет генерации, ${GEN_COST_PER_IMAGE - cfg.discountPerImage} $ за картинку, до ${cfg.maxImages} картинок за раз, +${cfg.dailyBonus} $ в день.`,
         payload,
         currency: "XTR",
         prices: [{ label: title, amount: stars }],
@@ -290,19 +285,13 @@ app.post("/api/subscription/create-invoice", async (req, res) => {
     const data = await response.json();
     if (!data.ok) return res.status(500).json({ error: data.description });
 
-    res.json({ link: data.result, stars });
+    res.json({ link: data.result, stars, tier });
   } catch (err) {
     console.error("Subscription invoice error:", err.message);
     res.status(500).json({ error: "internal error" });
   }
 });
 
-/**
- * POST /api/promo/redeem
- * body: { code, initData }
- * Погашает промокод: начисляет amount $, если код существует, ещё не исчерпан
- * лимитом использований, и этот пользователь его ещё не применял.
- */
 app.post("/api/promo/redeem", async (req, res) => {
   try {
     const userId = extractUserId(req.body.initData);
@@ -345,11 +334,6 @@ app.post("/api/promo/redeem", async (req, res) => {
   }
 });
 
-/**
- * POST /api/generate
- * body: { prompt, style: "static"|"animated", initData }
- * Генерирует несколько картинок через Hugging Face Inference API.
- */
 app.post("/api/generate", async (req, res) => {
   try {
     const { prompt, count, initData } = req.body;
@@ -361,9 +345,10 @@ app.post("/api/generate", async (req, res) => {
     if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
 
     const sub = await getOrCreateSubscription(userId);
-    const premium = isSubActive(sub);
-    const maxImages = premium ? SUB_MAX_IMAGES : 4;
-    const costPerImage = premium ? GEN_COST_PER_IMAGE - SUB_GEN_DISCOUNT_PER_IMAGE : GEN_COST_PER_IMAGE;
+    const cfg = tierConfig(sub);
+    const premium = !!cfg;
+    const maxImages = cfg ? cfg.maxImages : 4;
+    const costPerImage = cfg ? GEN_COST_PER_IMAGE - cfg.discountPerImage : GEN_COST_PER_IMAGE;
 
     const NUM_IMAGES = Math.min(Math.max(parseInt(count, 10) || 4, 1), maxImages);
     const cost = NUM_IMAGES * costPerImage;
@@ -382,11 +367,10 @@ app.post("/api/generate", async (req, res) => {
       prompt,
       NUM_IMAGES,
       (id) => `${req.protocol}://${req.get("host")}/api/image/${id}`,
-      { premium }
+      { cfg }
     );
 
     if (images.length === 0) {
-      // Ни одна картинка не получилась — возвращаем деньги на баланс
       const refunded = await adjustBalance(userId, cost);
       return res.status(502).json({
         error: "Не удалось сгенерировать ни одной картинки. Попробуй ещё раз.",
@@ -394,30 +378,22 @@ app.post("/api/generate", async (req, res) => {
       });
     }
 
-    res.json({ images, balance: balanceAfterCharge, cost });
+    res.json({ images, balance: balanceAfterCharge, cost, premium });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "internal error" });
   }
 });
 
-/**
- * Генерирует набор стикеров (общая логика для мини-приложения и генерации через чат).
- * urlBuilder — необязательная функция (id) => url, если нужны публичные ссылки на картинки.
- * Возвращает массив { id, url?, animated }.
- */
 async function generateStickerSet(prompt, numImages, urlBuilder, options = {}) {
-  const { premium = false } = options;
+  const { cfg = null } = options;
   const stickerPrompt =
     `sticker, ${prompt.trim()}, cute cartoon vector style, thick outline, ` +
     `simple flat colors, white background, centered, high contrast` +
-    (premium ? PREMIUM_PROMPT_SUFFIX : "");
+    (cfg ? cfg.promptSuffix : "");
 
   const images = [];
 
-  // Генерируем последовательно с паузой — у Pollinations.ai лимит для анонимных
-  // запросов примерно 1 запрос в 15 секунд. У премиум-подписчиков максимальный
-  // приоритет — генерируем без искусственной паузы между картинками.
   for (let i = 0; i < numImages; i++) {
     try {
       const buffer = await generateOneImage(stickerPrompt);
@@ -432,33 +408,25 @@ async function generateStickerSet(prompt, numImages, urlBuilder, options = {}) {
     } catch (err) {
       console.error(`Ошибка генерации картинки #${i}:`, err.message);
     }
-    if (!premium && i < numImages - 1) {
-      await new Promise((r) => setTimeout(r, 1500));
+    if (i < numImages - 1) {
+      const pause = cfg ? cfg.generationPauseMs : 1500;
+      if (pause > 0) await new Promise((r) => setTimeout(r, pause));
     }
   }
 
   return images;
 }
 
-/**
- * Отдаёт закешированную картинку по id
- */
 app.get("/api/image/:id", (req, res) => {
   const buf = generatedCache.get(req.params.id);
   if (!buf) return res.status(404).send("not found");
   res.set("Content-Type", "image/png");
-  // ?download=1 — просим браузер сохранить файл, а не открыть его в новой вкладке
   if (req.query.download) {
     res.set("Content-Disposition", `attachment; filename="sticker_${req.params.id}.png"`);
   }
   res.send(buf);
 });
 
-/**
- * POST /api/my-packs
- * body: { initData }
- * Возвращает список стикерпаков, которые этот пользователь уже создавал через бота.
- */
 app.post("/api/my-packs", async (req, res) => {
   try {
     const userId = extractUserId(req.body.initData);
@@ -472,12 +440,6 @@ app.post("/api/my-packs", async (req, res) => {
   }
 });
 
-/**
- * POST /api/add-to-pack
- * body: { stickers: [{id}], initData, packName? | targetPackShortName? }
- * Создаёт новый стикерпак (если передан packName) ЛИБО дополняет уже существующий
- * (если передан targetPackShortName — короткое имя одного из ранее созданных паков).
- */
 app.post("/api/add-to-pack", async (req, res) => {
   try {
     const { packName, targetPackShortName, stickers, initData } = req.body;
@@ -494,7 +456,6 @@ app.post("/api/add-to-pack", async (req, res) => {
     let packLink;
 
     if (targetPackShortName) {
-      // Проверяем, что этот пак действительно принадлежит текущему пользователю
       const owned = await supabaseRequest(
         `sticker_packs?user_id=eq.${userId}&short_name=eq.${encodeURIComponent(targetPackShortName)}&select=short_name`
       );
@@ -524,13 +485,6 @@ app.post("/api/add-to-pack", async (req, res) => {
   }
 });
 
-/**
- * Общая логика создания стикерпака из массива id закешированных картинок.
- * Используется и мини-приложением, и генерацией прямо в чате с ботом.
- * Возвращает ссылку на пак, либо null, если не нашлось ни одной валидной картинки.
- * Также запоминает пак в таблице sticker_packs, чтобы его можно было выбрать
- * позже как "существующий" при следующем сохранении.
- */
 async function buildStickerPack(userId, packName, ids) {
   const botUsername = await getBotUsername();
   const shortName = `${slugify(packName)}_${Date.now()}`.slice(0, 50) + `_by_${botUsername}`;
@@ -557,18 +511,12 @@ async function buildStickerPack(userId, packName, ids) {
     });
   } catch (err) {
     console.error("Failed to record pack in sticker_packs:", err.message);
-    // Не критично — сам пак уже создан в Telegram, просто не появится в списке "существующих"
   }
 
   return `https://t.me/addstickers/${shortName}`;
 }
 
-// ---------- Helpers ----------
-
 async function generateOneImage(prompt) {
-  // Сначала пробуем качественный платный способ (если на балансе Pollinations
-  // есть деньги) — если средств не хватает или сервис недоступен, автоматически
-  // переходим на бесплатный (попроще качеством, но всегда работает).
   if (process.env.POLLINATIONS_KEY) {
     try {
       return await generateViaPaidEndpoint(prompt);
@@ -616,7 +564,6 @@ async function generateViaFreeEndpoint(prompt, retries = 3, attempt = 0) {
 }
 
 async function processToSticker(buffer) {
-  // Приводим к требованиям Telegram: PNG, одна сторона = 512px
   return sharp(buffer)
     .resize(512, 512, {
       fit: "contain",
@@ -627,17 +574,13 @@ async function processToSticker(buffer) {
 }
 
 function slugify(str) {
-  // Telegram требует: short_name состоит ТОЛЬКО из латинских букв, цифр и подчёркиваний,
-  // и обязательно начинается с буквы. Кириллица и любые другие символы сюда не годятся —
-  // название на русском, которое видит пользователь, никак не страдает,
-  // это чисто техническое имя "под капотом".
   let slug = str
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
 
   if (!slug) slug = "pack";
-  if (!/^[a-z]/.test(slug)) slug = "s" + slug; // должно начинаться с буквы
+  if (!/^[a-z]/.test(slug)) slug = "s" + slug;
 
   return slug;
 }
@@ -703,12 +646,7 @@ async function addStickerToSet(userId, shortName, pngBuffer) {
 }
 
 const PORT = process.env.PORT || 3000;
-/**
- * Курс обмена: сколько $ начисляется за 1 Telegram Star (до скидки).
- * Чем больше сумма — тем больше скидка (плавно растёт между точками), максимум 15% при $5000+.
- * ВАЖНО: эти же пороги продублированы во фронтенде (index.html, DISCOUNT_TIERS) для превью цены —
- * если меняешь одно, меняй и другое, иначе показанная и реально списанная цена разойдутся.
- */
+
 const DOLLARS_PER_STAR = 10;
 const MIN_AMOUNT = 10;
 const MAX_AMOUNT = 10000;
@@ -745,12 +683,6 @@ function amountToStars(amount) {
   return Math.max(1, Math.round(baseStars * (1 - discount)));
 }
 
-/**
- * POST /api/create-invoice
- * body: { packageId?, customAmount?, initData }
- * Создаёт ссылку на оплату через Telegram Stars.
- * Либо передай packageId (готовый пакет), либо customAmount (своя сумма 10–10000).
- */
 app.post("/api/create-invoice", async (req, res) => {
   try {
     const { packageId, customAmount, initData } = req.body;
@@ -781,7 +713,7 @@ app.post("/api/create-invoice", async (req, res) => {
         title,
         description: `Пополнение баланса на ${amount} $`,
         payload,
-        currency: "XTR", // код валюты для Telegram Stars
+        currency: "XTR",
         prices: [{ label: title, amount: stars }],
       }),
     });
@@ -795,17 +727,11 @@ app.post("/api/create-invoice", async (req, res) => {
   }
 });
 
-/**
- * POST /telegram-webhook
- * Обязательный endpoint для приёма событий от Telegram: подтверждение оплаты
- * (pre_checkout_query) и уведомление об успешной оплате (successful_payment).
- */
 app.post("/telegram-webhook", async (req, res) => {
   try {
     const update = req.body;
 
     if (update.pre_checkout_query) {
-      // Telegram спрашивает разрешения провести платёж — подтверждаем
       await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerPreCheckoutQuery`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -820,11 +746,12 @@ app.post("/telegram-webhook", async (req, res) => {
       const payload = JSON.parse(update.message.successful_payment.invoice_payload);
       try {
         if (payload.type === "subscription") {
+          const tier = payload.tier === "luxury" ? "luxury" : "standard";
+          const cfg = TIERS[tier];
           const sub = await getOrCreateSubscription(payload.userId);
-          // Если подписка ещё активна — продлеваем от текущей даты окончания, а не от "сейчас"
-          const base =
-            isSubActive(sub) && sub.expires_at ? new Date(sub.expires_at) : new Date();
-          const expiresAt = new Date(base.getTime() + SUB_DURATION_DAYS * 24 * 60 * 60 * 1000);
+          const sameTierStillActive = isSubActive(sub) && sub.tier === tier;
+          const base = sameTierStillActive && sub.expires_at ? new Date(sub.expires_at) : new Date();
+          const expiresAt = new Date(base.getTime() + SUBSCRIPTION_DURATION_DAYS * 24 * 60 * 60 * 1000);
 
           await supabaseRequest(`subscriptions?user_id=eq.${payload.userId}`, {
             method: "PATCH",
@@ -832,13 +759,15 @@ app.post("/telegram-webhook", async (req, res) => {
               active: true,
               expires_at: expiresAt.toISOString(),
               first_purchase_done: true,
+              tier,
             }),
           });
 
-          console.log(`✅ Premium активирован: user ${payload.userId}, до ${expiresAt.toISOString()}`);
+          console.log(`✅ ${cfg.label} активирован: user ${payload.userId}, до ${expiresAt.toISOString()}`);
           await sendTelegramMessage(
             update.message.chat.id,
-            `🔴 Premium активирован! Действует до ${expiresAt.toLocaleDateString("ru-RU")}.`
+            `🔴 ${cfg.label} активирован! Действует до ${expiresAt.toLocaleDateString("ru-RU")}.\n` +
+              `Плюшки: ${GEN_COST_PER_IMAGE - cfg.discountPerImage} $/картинка, до ${cfg.maxImages} за раз, +${cfg.dailyBonus} $ в день.`
           );
         } else {
           const newBalance = await adjustBalance(payload.userId, payload.amount);
@@ -853,7 +782,6 @@ app.post("/telegram-webhook", async (req, res) => {
       }
     }
 
-    // Обычные текстовые сообщения в чате с ботом (не в мини-аппе)
     if (update.message?.text && !update.message.successful_payment) {
       await handleChatMessage(update.message);
     }
@@ -861,7 +789,7 @@ app.post("/telegram-webhook", async (req, res) => {
     res.sendStatus(200);
   } catch (err) {
     console.error("Webhook error:", err);
-    res.sendStatus(200); // Telegram не любит, когда webhook отвечает ошибкой
+    res.sendStatus(200);
   }
 });
 
@@ -871,7 +799,7 @@ const WELCOME_TEXT =
   "Привет! 👋✨ Я — бот, который рисует стикеры с помощью нейросети.\n\n" +
   "🎨 <b>Как создать стикеры</b>\n" +
   "Два способа на выбор:\n" +
-  "1️⃣ Кнопка меню внизу чата — там удобное приложение: выбор количества картинок, игра «Найди пары» за $, покупка $ за Stars\n" +
+  "1️⃣ Кнопка меню внизу чата — там удобное приложение: выбор количества картинок, покупка $, Standard/Luxury подписка\n" +
   "2️⃣ Прямо тут, текстом:\n" +
   "   <code>/create гиппопотам в очках</code> — сгенерирует 4 картинки\n" +
   "   <code>/save Мои гиппопотамы</code> — сохранит их как стикерпак\n\n" +
@@ -884,42 +812,35 @@ const HELP_COMMANDS_TEXT =
   "<code>/create описание</code> — сгенерировать 4 стикера (20 $)\n" +
   "<code>/save название пака</code> — сохранить последнюю генерацию\n\n" +
   "💰 <b>Баланс</b>\n" +
-  "У новых — 15 $ бесплатно. Не хватает? Открой приложение — там игра «Найди пары» (до 5 $ за раз) или покупка $ за Telegram Stars, либо спроси про промокод.\n\n" +
-  "🔴 <b>Premium</b>\n" +
-  "Максимальный приоритет генерации, уникальный премиум-стиль, скидка на картинки, до 10 стикеров за раз и ежедневный бонус $. Первый месяц — 1⭐, дальше 50⭐. Кнопка Premium — в приложении.\n\n" +
+  "У новых — 15 $ бесплатно. Не хватает? Купи $ за Telegram Stars в приложении, либо спроси про промокод.\n\n" +
+  "🔴 <b>Premium (Standard / Luxury)</b>\n" +
+  "Приоритет генерации, скидка на картинки, больше картинок за раз, ежедневный бонус $, уникальный стиль. " +
+  "Первый месяц любого уровня — 1⭐. Кнопка Premium — в приложении.\n\n" +
   "🔍 <b>Где сохранённые стикеры</b>\n" +
   "Иконка стикеров в поле ввода сообщения → «Мои наборы». Управлять паками (переименовать, удалить) — через официального бота @Stickers.\n\n" +
   "❓Любой другой вопрос — просто напиши текстом, отвечу.";
 
 const SYSTEM_CONTEXT = `Ты — дружелюбный помощник Telegram-бота для генерации стикеров нейросетью.
 Есть два способа создать стикеры: 1) через мини-приложение (кнопка меню внизу чата) —
-там можно выбрать количество картинок (1-4), играть в мини-игру за $, покупать $ за Stars;
-2) прямо в чате с ботом текстовыми командами: "/create описание" (например "/create гиппопотам
-в очках") генерирует 4 картинки и присылает их в чат, а дальше команда "/save название пака"
-сохраняет их как стикерпак. Стоимость генерации — 5 $ за одну картинку (то есть 4 картинки = 20 $).
-Новым пользователям выдаётся 15 $ бесплатно. Если $ не хватает — можно сыграть в мини-игру
-"Найди пары" в приложении (тап по баланс) или купить $ за Telegram Stars прямо в приложении.
-Также есть платная Premium-подписка (кнопка в приложении): первый месяц стоит 1 Telegram Star,
-дальнейшие продления — 50 Stars. Она даёт максимальный приоритет генерации (без пауз между
-картинками), уникальный премиум-стиль стикеров, скидку на генерацию (3 $ за картинку вместо 5 $),
-до 10 картинок за раз вместо 4, и ежедневный бонус 20 $ на баланс, пока подписка активна.
-После сохранения стикеры сразу появляются в личном списке стикерпаков в Telegram: их можно найти
-через встроенный поиск стикеров в любом чате (иконка стикеров в поле ввода сообщения → раздел
-"Мои наборы"), а управлять своими сохранёнными наборами (переименовать, удалить, посмотреть все)
-можно через официального Telegram-бота @Stickers — это встроенный сервис самого
-Telegram для администрирования стикерпаков, не наш бот, но он показывает все паки
-пользователя, включая созданные через нас. Если генерация не удалась — можно просто попробовать ещё раз,
-это бесплатный сервис и иногда он перегружен. Отвечай кратко, по-дружески,
-на языке вопроса пользователя (русский или английский). Если вопрос не связан
-с ботом и стикерами — вежливо верни разговор к теме бота.`;
+там можно выбрать количество картинок, купить $ за Stars, оформить Premium-подписку (Standard или Luxury);
+2) прямо в чате с ботом текстовыми командами: "/create описание" генерирует 4 картинки, а
+"/save название пака" сохраняет их как стикерпак. Стоимость генерации — 5 $ за картинку по умолчанию.
+Новым пользователям выдаётся 15 $ бесплатно. Есть два уровня Premium-подписки через Telegram Stars,
+у обоих первый месяц стоит всего 1 звезду: Standard (продление 30⭐) даёт 4 $ за картинку, до 6 картинок
+за раз, +10 $ в день и приоритет генерации; Luxury (продление 75⭐) даёт 2 $ за картинку, до 10 картинок
+за раз, +30 $ в день, максимальный приоритет без пауз и эксклюзивный премиум-стиль стикеров (глянцевая
+отделка, золотой контур). После сохранения стикеры сразу появляются в личном списке стикерпаков в
+Telegram: их можно найти через встроенный поиск стикеров в любом чате (иконка стикеров в поле ввода
+сообщения → раздел "Мои наборы"), а управлять своими сохранёнными наборами можно через официального
+Telegram-бота @Stickers. Если генерация не удалась — можно просто попробовать ещё раз, это бесплатный
+сервис и иногда он перегружен. Отвечай кратко, по-дружески, на языке вопроса пользователя (русский
+или английский). Если вопрос не связан с ботом и стикерами — вежливо верни разговор к теме бота.`;
 
 async function handleChatMessage(message) {
   const chatId = message.chat.id;
   const fromId = message.from?.id;
   const text = message.text.trim();
 
-  // Секретные админ-команды — работают только для владельца (по Telegram ID),
-  // никому больше не видны и не доступны, не упоминаются в подсказках/справке.
   const OWNER_ID = process.env.OWNER_TELEGRAM_ID ? Number(process.env.OWNER_TELEGRAM_ID) : null;
   if (OWNER_ID && fromId === OWNER_ID) {
     const setMatch = text.match(/^\/setbalance\s+(-?\d+)$/i);
@@ -932,7 +853,6 @@ async function handleChatMessage(message) {
         headers: { Prefer: "return=representation" },
         body: JSON.stringify({ balance: amount }),
       }).catch(async () => {
-        // записи ещё нет — создаём
         await supabaseRequest(`balances`, {
           method: "POST",
           body: JSON.stringify({ user_id: fromId, balance: amount }),
@@ -955,7 +875,27 @@ async function handleChatMessage(message) {
       return;
     }
 
-    // /createpromo КОД СУММА [ЛИМИТ_ИСПОЛЬЗОВАНИЙ]
+    const grantMatch = text.match(/^\/grantpremium\s+(standard|luxury)(?:\s+(\d+))?$/i);
+    if (grantMatch) {
+      const tier = grantMatch[1].toLowerCase();
+      const days = grantMatch[2] ? parseInt(grantMatch[2], 10) : SUBSCRIPTION_DURATION_DAYS;
+      const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+      const exists = await supabaseRequest(`subscriptions?user_id=eq.${fromId}&select=user_id`);
+      if (exists && exists.length > 0) {
+        await supabaseRequest(`subscriptions?user_id=eq.${fromId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ active: true, expires_at: expiresAt, first_purchase_done: true, tier }),
+        });
+      } else {
+        await supabaseRequest(`subscriptions`, {
+          method: "POST",
+          body: JSON.stringify({ user_id: fromId, active: true, expires_at: expiresAt, first_purchase_done: true, tier }),
+        });
+      }
+      await sendTelegramMessage(chatId, `✅ ${TIERS[tier].label} выдан бесплатно на ${days} дн. (для тестов, без начисления Stars)`);
+      return;
+    }
+
     const promoMatch = text.match(/^\/createpromo\s+(\S+)\s+(\d+)(?:\s+(\d+))?$/i);
     if (promoMatch) {
       const code = promoMatch[1].toUpperCase();
@@ -991,8 +931,11 @@ async function handleChatMessage(message) {
   const createMatch = text.match(/^\/(create|generate)\s+([\s\S]+)$/i);
   if (createMatch) {
     const description = createMatch[2].trim();
+    const sub = await getOrCreateSubscription(fromId);
+    const cfg = tierConfig(sub);
     const CHAT_GEN_COUNT = 4;
-    const cost = CHAT_GEN_COUNT * GEN_COST_PER_IMAGE;
+    const costPerImage = cfg ? GEN_COST_PER_IMAGE - cfg.discountPerImage : GEN_COST_PER_IMAGE;
+    const cost = CHAT_GEN_COUNT * costPerImage;
 
     let balanceAfterCharge;
     try {
@@ -1002,7 +945,7 @@ async function handleChatMessage(message) {
         await sendTelegramMessage(
           chatId,
           `Не хватает $ на генерацию (нужно ${cost} $). Пополни баланс через кнопку меню — в приложении можно ` +
-            `сыграть в мини-игру или купить $ за Telegram Stars.`
+            `купить $ за Telegram Stars.`
         );
         return;
       }
@@ -1011,7 +954,7 @@ async function handleChatMessage(message) {
 
     await sendTelegramMessage(chatId, `Генерирую ${CHAT_GEN_COUNT} стикера по описанию «${description}»… это может занять около минуты ✨`);
 
-    const images = await generateStickerSet(description, CHAT_GEN_COUNT);
+    const images = await generateStickerSet(description, CHAT_GEN_COUNT, undefined, { cfg });
 
     if (images.length === 0) {
       const refunded = await adjustBalance(fromId, cost);
@@ -1071,7 +1014,6 @@ async function handleChatMessage(message) {
     );
 
     if (aiResponse.status === 402) {
-      // Закончился баланс "pollen" на ключе — присылаем базовую справку вместо ошибки
       await sendTelegramMessage(chatId, FALLBACK_HELP_TEXT);
       return;
     }
@@ -1093,7 +1035,7 @@ const FALLBACK_HELP_TEXT =
   "• Генерация: открой меню внизу чата или напиши «/create описание»\n" +
   "• Сохранить: выбери стикеры в приложении, или напиши «/save название» после /create\n" +
   "• Найти сохранённое: иконка стикеров в поле ввода → «Мои наборы», или бот @Stickers\n" +
-  "• Не хватает $: сыграй в игру в приложении, купи за Stars, или спроси про промокод";
+  "• Не хватает $: купи за Stars или спроси про промокод";
 
 async function sendTelegramMessage(chatId, text) {
   await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
@@ -1103,10 +1045,6 @@ async function sendTelegramMessage(chatId, text) {
   });
 }
 
-// Отдельная версия с HTML-разметкой (жирный, код) — используем ТОЛЬКО для заранее
-// заданных текстов (WELCOME_TEXT, HELP_COMMANDS_TEXT), никогда для текста, куда
-// подставляются пользовательские данные или сообщения об ошибках — иначе случайный
-// символ "<" или "&" сломает отправку сообщения целиком.
 async function sendTelegramMessageHTML(chatId, html) {
   await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
     method: "POST",
@@ -1125,8 +1063,6 @@ async function sendTelegramPhoto(chatId, pngBuffer) {
   });
 }
 
-// Простой health-check адрес — для внешнего "будильника" (UptimeRobot и т.п.),
-// чтобы бесплатный сервер на Render не засыпал от бездействия
 app.get("/", (req, res) => {
   res.send("OK");
 });
