@@ -487,6 +487,151 @@ app.post("/api/my-packs", async (req, res) => {
   }
 });
 
+async function getOwnedStickerPack(userId, shortName) {
+  if (typeof shortName !== "string" || !/^[A-Za-z0-9_]{1,64}$/.test(shortName)) return null;
+  const rows = await supabaseRequest(
+    `sticker_packs?user_id=eq.${userId}&short_name=eq.${encodeURIComponent(shortName)}&select=short_name,title`
+  );
+  return rows?.[0] || null;
+}
+
+async function telegramApi(method, payload) {
+  const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json();
+  if (!response.ok || !data.ok) throw new Error(data.description || `Telegram ${method} failed`);
+  return data.result;
+}
+
+app.post("/api/my-packs/stickers", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
+    const pack = await getOwnedStickerPack(userId, req.body.shortName);
+    if (!pack) return res.status(404).json({ error: "pack not found" });
+    const stickerSet = await telegramApi("getStickerSet", { name: pack.short_name });
+    res.json({
+      pack: { shortName: pack.short_name, title: stickerSet.title || pack.title },
+      stickers: (stickerSet.stickers || []).map((sticker) => ({
+        fileId: sticker.file_id,
+        fileUniqueId: sticker.file_unique_id,
+        emoji: sticker.emoji || "😀",
+        width: sticker.width,
+        height: sticker.height,
+      })),
+    });
+  } catch (err) {
+    console.error("Pack-stickers error:", err.message);
+    res.status(500).json({ error: "could not load sticker pack" });
+  }
+});
+
+app.post("/api/my-packs/sticker-image", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
+    const pack = await getOwnedStickerPack(userId, req.body.shortName);
+    if (!pack) return res.status(404).json({ error: "pack not found" });
+    const stickerSet = await telegramApi("getStickerSet", { name: pack.short_name });
+    const fileId = req.body.fileId;
+    if (typeof fileId !== "string" || !stickerSet.stickers?.some((sticker) => sticker.file_id === fileId)) {
+      return res.status(404).json({ error: "sticker not found in pack" });
+    }
+    const file = await telegramApi("getFile", { file_id: fileId });
+    if (!file.file_path || file.file_path.includes("..")) throw new Error("invalid Telegram file path");
+    const imageResponse = await fetch(`https://api.telegram.org/file/bot${BOT_TOKEN}/${file.file_path}`);
+    if (!imageResponse.ok) throw new Error("could not fetch Telegram sticker image");
+    const bytes = Buffer.from(await imageResponse.arrayBuffer());
+    if (bytes.length > 2 * 1024 * 1024) return res.status(413).end();
+    res.set("Content-Type", file.file_path.endsWith(".webp") ? "image/webp" : "application/octet-stream");
+    res.set("Cache-Control", "private, max-age=300");
+    res.send(bytes);
+  } catch (err) {
+    console.error("Pack-image error:", err.message);
+    res.status(500).json({ error: "could not load sticker image" });
+  }
+});
+
+app.post("/api/my-packs/rename", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
+    const pack = await getOwnedStickerPack(userId, req.body.shortName);
+    const title = typeof req.body.title === "string" ? req.body.title.trim() : "";
+    if (!pack) return res.status(404).json({ error: "pack not found" });
+    if (!title || [...title].length > 64) return res.status(400).json({ error: "title must be 1 to 64 characters" });
+    await telegramApi("setStickerSetTitle", { name: pack.short_name, title });
+    await supabaseRequest(`sticker_packs?user_id=eq.${userId}&short_name=eq.${encodeURIComponent(pack.short_name)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title }),
+    });
+    res.json({ ok: true, title });
+  } catch (err) {
+    console.error("Pack-rename error:", err.message);
+    res.status(500).json({ error: "could not rename sticker pack" });
+  }
+});
+
+app.post("/api/my-packs/edit-sticker", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
+    const pack = await getOwnedStickerPack(userId, req.body.shortName);
+    if (!pack) return res.status(404).json({ error: "pack not found" });
+    const fileId = req.body.fileId;
+    const emoji = typeof req.body.emoji === "string" ? req.body.emoji.trim() : "";
+    if (!emoji || [...emoji].length > 16) return res.status(400).json({ error: "emoji is required" });
+    const stickerSet = await telegramApi("getStickerSet", { name: pack.short_name });
+    if (!stickerSet.stickers?.some((sticker) => sticker.file_id === fileId)) {
+      return res.status(404).json({ error: "sticker not found in pack" });
+    }
+    await telegramApi("setStickerEmojiList", { sticker: fileId, emoji_list: [emoji] });
+    res.json({ ok: true, emoji });
+  } catch (err) {
+    console.error("Edit-sticker error:", err.message);
+    res.status(500).json({ error: "could not update sticker emoji" });
+  }
+});
+
+app.post("/api/my-packs/delete", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
+    const pack = await getOwnedStickerPack(userId, req.body.shortName);
+    if (!pack) return res.status(404).json({ error: "pack not found" });
+    await telegramApi("deleteStickerSet", { name: pack.short_name });
+    await supabaseRequest(`sticker_packs?user_id=eq.${userId}&short_name=eq.${encodeURIComponent(pack.short_name)}`, {
+      method: "DELETE",
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Delete-pack error:", err.message);
+    res.status(500).json({ error: "could not delete sticker pack" });
+  }
+});
+
+app.post("/api/my-packs/delete-sticker", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
+    const pack = await getOwnedStickerPack(userId, req.body.shortName);
+    if (!pack) return res.status(404).json({ error: "pack not found" });
+    const stickerSet = await telegramApi("getStickerSet", { name: pack.short_name });
+    const fileId = req.body.fileId;
+    if (typeof fileId !== "string" || !stickerSet.stickers?.some((sticker) => sticker.file_id === fileId)) {
+      return res.status(404).json({ error: "sticker not found in pack" });
+    }
+    await telegramApi("deleteStickerFromSet", { sticker: fileId });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Delete-sticker error:", err.message);
+    res.status(500).json({ error: "could not delete sticker" });
+  }
+});
+
 app.post("/api/add-to-pack", async (req, res) => {
   try {
     const { packName, targetPackShortName, stickers, initData } = req.body;
@@ -1143,3 +1288,4 @@ app.get("/", (req, res) => {
 });
 
 app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+
