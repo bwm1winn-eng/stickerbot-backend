@@ -21,6 +21,9 @@ if (!SUPABASE_URL || !SUPABASE_KEY) console.warn("⚠️  SUPABASE_URL/SUPABASE_
 
 const generatedCache = new Map();
 const lastGenerationByUser = new Map();
+const helpRequestWindows = new Map();
+const HELP_RATE_WINDOW_MS = 60 * 60_000;
+const HELP_MAX_REQUESTS_PER_WINDOW = 10;
 
 async function supabaseRequest(path, options = {}) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
@@ -191,8 +194,7 @@ function isOwnerUser(userId) {
   return ownerId !== null && Number(userId) === ownerId;
 }
 
-// ---------- Premium-подписка через Telegram Stars: два уровня, Standard и Luxury ----------
-const SUBSCRIPTION_FIRST_PRICE_STARS = 1;
+// ---------- Premium-подписка через Telegram Stars: Standard, Luxury и Ultimate ----------
 const SUBSCRIPTION_DURATION_DAYS = 30;
 
 const LUXURY_PROMPT_SUFFIX =
@@ -200,24 +202,39 @@ const LUXURY_PROMPT_SUFFIX =
 const STANDARD_PROMPT_SUFFIX =
   ", clean crisp sticker finish, soft shading, polished look";
 
+// Introductory prices are about 35% below renewal. Daily credits are budgeted
+// at about 30% of the nominal Star price (10 balance credits = 1 Star); this is
+// a benefit budget, not a profit guarantee because provider costs and net Stars vary.
 const TIERS = {
   standard: {
     label: "Standard",
-    renewStars: 30,
+    firstStars: 19,
+    renewStars: 29,
     discountPerImage: 1,
     maxImages: 6,
-    dailyBonus: 10,
+    dailyBonus: 3,
     generationPauseMs: 700,
     promptSuffix: STANDARD_PROMPT_SUFFIX,
   },
   luxury: {
     label: "Luxury",
-    renewStars: 75,
-    discountPerImage: 3,
+    firstStars: 52,
+    renewStars: 79,
+    discountPerImage: 2,
     maxImages: 10,
-    dailyBonus: 30,
+    dailyBonus: 8,
     generationPauseMs: 0,
     promptSuffix: LUXURY_PROMPT_SUFFIX,
+  },
+  ultimate: {
+    label: "Ultimate",
+    firstStars: 229,
+    renewStars: 350,
+    discountPerImage: 3,
+    maxImages: 12,
+    dailyBonus: 35,
+    generationPauseMs: 0,
+    promptSuffix: ", exclusive Ultimate sticker art, vivid jewel-tone colors, cinematic rim lighting, crisp die-cut outline, premium collectible finish",
   },
 };
 
@@ -285,8 +302,9 @@ app.post("/api/subscription/status", async (req, res) => {
       tier: active ? sub.tier : null,
       expiresAt: sub.expires_at,
       pricing: {
-        standard: { firstStars: SUBSCRIPTION_FIRST_PRICE_STARS, renewStars: TIERS.standard.renewStars },
-        luxury: { firstStars: SUBSCRIPTION_FIRST_PRICE_STARS, renewStars: TIERS.luxury.renewStars },
+        standard: { firstStars: TIERS.standard.firstStars, renewStars: TIERS.standard.renewStars },
+        luxury: { firstStars: TIERS.luxury.firstStars, renewStars: TIERS.luxury.renewStars },
+        ultimate: { firstStars: TIERS.ultimate.firstStars, renewStars: TIERS.ultimate.renewStars },
         firstPurchaseDone: !!sub.first_purchase_done,
       },
       perks: cfg
@@ -305,17 +323,81 @@ app.post("/api/subscription/status", async (req, res) => {
   }
 });
 
+app.post("/api/help/ask", async (req, res) => {
+  const userId = extractUserId(req.body.initData);
+  if (!userId) return res.status(401).json({ error: "open the app through Telegram to ask for help" });
+
+  const question = typeof req.body.question === "string" ? req.body.question.trim() : "";
+  if (question.length < 3 || question.length > 500) {
+    return res.status(400).json({ error: "question must be between 3 and 500 characters" });
+  }
+
+  const now = Date.now();
+  const recentRequests = (helpRequestWindows.get(userId) || []).filter((time) => now - time < HELP_RATE_WINDOW_MS);
+  if (recentRequests.length >= HELP_MAX_REQUESTS_PER_WINDOW) {
+    helpRequestWindows.set(userId, recentRequests);
+    return res.status(429).json({ error: "AI help limit reached for this hour" });
+  }
+  recentRequests.push(now);
+  helpRequestWindows.set(userId, recentRequests);
+  if (helpRequestWindows.size > 5000) {
+    for (const [id, times] of helpRequestWindows) {
+      if (!times.some((time) => now - time < HELP_RATE_WINDOW_MS)) helpRequestWindows.delete(id);
+      if (helpRequestWindows.size <= 4000) break;
+    }
+  }
+
+  const languageNames = {
+    ru: "Russian", en: "English", es: "Spanish", zh: "Simplified Chinese", hi: "Hindi",
+    ar: "Arabic", pt: "Portuguese", fr: "French", ja: "Japanese", de: "German", id: "Indonesian", tr: "Turkish",
+  };
+  const language = languageNames[req.body.language] || "English";
+  const prompt = [
+    "You are the concise, friendly help assistant for Sticker Bot, a Telegram sticker-creation mini app.",
+    "Answer only questions about using the app, generating stickers, sticker packs, balance, and the visible subscription terms.",
+    "Do not claim you changed a user's account or payment. Never ask for passwords, bot tokens, or secret keys.",
+    `Reply in ${language}, in at most 5 short sentences. If unsure, say so and suggest the in-app tutorial or contacting the bot owner.`,
+    `User question: ${question}`,
+  ].join("\n\n");
+
+  try {
+    const keyParam = process.env.POLLINATIONS_KEY
+      ? `?key=${encodeURIComponent(process.env.POLLINATIONS_KEY)}`
+      : "";
+    const response = await fetch(`https://gen.pollinations.ai/text/${encodeURIComponent(prompt)}${keyParam}`, {
+      signal: AbortSignal.timeout(25_000),
+    });
+    if (!response.ok) {
+      console.error("Mini App AI help request failed:", response.status);
+      return res.status(502).json({ error: "AI help is temporarily unavailable" });
+    }
+    const answer = (await response.text()).trim().slice(0, 1800);
+    if (!answer) return res.status(502).json({ error: "AI help returned an empty answer" });
+    res.json({ answer });
+  } catch (err) {
+    console.error("Mini App AI help error:", err.message);
+    res.status(502).json({ error: "AI help is temporarily unavailable" });
+  }
+});
+
 app.post("/api/subscription/create-invoice", async (req, res) => {
   try {
     const userId = extractUserId(req.body.initData);
     if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
 
-    const tier = req.body.tier === "luxury" ? "luxury" : "standard";
+    const tier = req.body.tier;
+    if (!Object.prototype.hasOwnProperty.call(TIERS, tier)) {
+      return res.status(400).json({ error: "unknown subscription tier" });
+    }
     const cfg = TIERS[tier];
 
     const sub = await getOrCreateSubscription(userId);
-    const stars = sub.first_purchase_done ? cfg.renewStars : SUBSCRIPTION_FIRST_PRICE_STARS;
+    const isFirstPurchase = !sub.first_purchase_done;
+    const stars = isFirstPurchase ? cfg.firstStars : cfg.renewStars;
     const title = sub.first_purchase_done ? `${cfg.label} — продление` : `${cfg.label} — первый месяц`;
+    const priceTerms = isFirstPurchase
+      ? `Первый месяц ${stars} ⭐, далее ручное продление ${cfg.renewStars} ⭐ за 30 дней.`
+      : `Ручное продление на 30 дней — ${stars} ⭐.`;
     const payload = JSON.stringify({ type: "subscription", tier, userId, ts: Date.now() });
 
     const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/createInvoiceLink`, {
@@ -323,7 +405,7 @@ app.post("/api/subscription/create-invoice", async (req, res) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title,
-        description: `${cfg.label}-подписка на ${SUBSCRIPTION_DURATION_DAYS} дней: приоритет генерации, ${GEN_COST_PER_IMAGE - cfg.discountPerImage} $ за картинку, до ${cfg.maxImages} картинок за раз, +${cfg.dailyBonus} $ в день.`,
+        description: `${cfg.label}: ${priceTerms} Приоритет генерации, ${GEN_COST_PER_IMAGE - cfg.discountPerImage} $ за картинку, до ${cfg.maxImages} картинок за раз, +${cfg.dailyBonus} $ в день.`,
         payload,
         currency: "XTR",
         prices: [{ label: title, amount: stars }],
@@ -506,13 +588,41 @@ async function telegramApi(method, payload) {
   return data.result;
 }
 
+const stickerSetCache = new Map();
+const STICKER_SET_CACHE_TTL_MS = 60_000;
+
+async function getCachedStickerSet(shortName) {
+  const cached = stickerSetCache.get(shortName);
+  if (cached && cached.expiresAt > Date.now()) return cached.promise;
+
+  const entry = {
+    expiresAt: Date.now() + STICKER_SET_CACHE_TTL_MS,
+    promise: telegramApi("getStickerSet", { name: shortName }),
+  };
+  stickerSetCache.set(shortName, entry);
+  if (stickerSetCache.size > 256) {
+    const oldestShortName = stickerSetCache.keys().next().value;
+    if (oldestShortName !== shortName) stickerSetCache.delete(oldestShortName);
+  }
+  try {
+    return await entry.promise;
+  } catch (err) {
+    if (stickerSetCache.get(shortName) === entry) stickerSetCache.delete(shortName);
+    throw err;
+  }
+}
+
+function invalidateStickerSetCache(shortName) {
+  stickerSetCache.delete(shortName);
+}
+
 app.post("/api/my-packs/stickers", async (req, res) => {
   try {
     const userId = extractUserId(req.body.initData);
     if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
     const pack = await getOwnedStickerPack(userId, req.body.shortName);
     if (!pack) return res.status(404).json({ error: "pack not found" });
-    const stickerSet = await telegramApi("getStickerSet", { name: pack.short_name });
+    const stickerSet = await getCachedStickerSet(pack.short_name);
     res.json({
       pack: { shortName: pack.short_name, title: stickerSet.title || pack.title },
       stickers: (stickerSet.stickers || []).map((sticker) => ({
@@ -535,7 +645,7 @@ app.post("/api/my-packs/sticker-image", async (req, res) => {
     if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
     const pack = await getOwnedStickerPack(userId, req.body.shortName);
     if (!pack) return res.status(404).json({ error: "pack not found" });
-    const stickerSet = await telegramApi("getStickerSet", { name: pack.short_name });
+    const stickerSet = await getCachedStickerSet(pack.short_name);
     const fileId = req.body.fileId;
     if (typeof fileId !== "string" || !stickerSet.stickers?.some((sticker) => sticker.file_id === fileId)) {
       return res.status(404).json({ error: "sticker not found in pack" });
@@ -564,6 +674,7 @@ app.post("/api/my-packs/rename", async (req, res) => {
     if (!pack) return res.status(404).json({ error: "pack not found" });
     if (!title || [...title].length > 64) return res.status(400).json({ error: "title must be 1 to 64 characters" });
     await telegramApi("setStickerSetTitle", { name: pack.short_name, title });
+    invalidateStickerSetCache(pack.short_name);
     await supabaseRequest(`sticker_packs?user_id=eq.${userId}&short_name=eq.${encodeURIComponent(pack.short_name)}`, {
       method: "PATCH",
       body: JSON.stringify({ title }),
@@ -584,11 +695,12 @@ app.post("/api/my-packs/edit-sticker", async (req, res) => {
     const fileId = req.body.fileId;
     const emoji = typeof req.body.emoji === "string" ? req.body.emoji.trim() : "";
     if (!emoji || [...emoji].length > 16) return res.status(400).json({ error: "emoji is required" });
-    const stickerSet = await telegramApi("getStickerSet", { name: pack.short_name });
+    const stickerSet = await getCachedStickerSet(pack.short_name);
     if (!stickerSet.stickers?.some((sticker) => sticker.file_id === fileId)) {
       return res.status(404).json({ error: "sticker not found in pack" });
     }
     await telegramApi("setStickerEmojiList", { sticker: fileId, emoji_list: [emoji] });
+    invalidateStickerSetCache(pack.short_name);
     res.json({ ok: true, emoji });
   } catch (err) {
     console.error("Edit-sticker error:", err.message);
@@ -603,6 +715,7 @@ app.post("/api/my-packs/delete", async (req, res) => {
     const pack = await getOwnedStickerPack(userId, req.body.shortName);
     if (!pack) return res.status(404).json({ error: "pack not found" });
     await telegramApi("deleteStickerSet", { name: pack.short_name });
+    invalidateStickerSetCache(pack.short_name);
     await supabaseRequest(`sticker_packs?user_id=eq.${userId}&short_name=eq.${encodeURIComponent(pack.short_name)}`, {
       method: "DELETE",
     });
@@ -619,12 +732,13 @@ app.post("/api/my-packs/delete-sticker", async (req, res) => {
     if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
     const pack = await getOwnedStickerPack(userId, req.body.shortName);
     if (!pack) return res.status(404).json({ error: "pack not found" });
-    const stickerSet = await telegramApi("getStickerSet", { name: pack.short_name });
+    const stickerSet = await getCachedStickerSet(pack.short_name);
     const fileId = req.body.fileId;
     if (typeof fileId !== "string" || !stickerSet.stickers?.some((sticker) => sticker.file_id === fileId)) {
       return res.status(404).json({ error: "sticker not found in pack" });
     }
     await telegramApi("deleteStickerFromSet", { sticker: fileId });
+    invalidateStickerSetCache(pack.short_name);
     res.json({ ok: true });
   } catch (err) {
     console.error("Delete-sticker error:", err.message);
@@ -662,6 +776,7 @@ app.post("/api/add-to-pack", async (req, res) => {
         addedAny = true;
       }
       if (!addedAny) return res.status(400).json({ error: "no valid stickers found" });
+      invalidateStickerSetCache(targetPackShortName);
       packLink = `https://t.me/addstickers/${targetPackShortName}`;
     } else {
       packLink = await buildStickerPack(userId, packName, ids);
@@ -966,7 +1081,7 @@ app.post("/telegram-webhook", async (req, res) => {
       const payload = JSON.parse(update.message.successful_payment.invoice_payload);
       try {
         if (payload.type === "subscription") {
-          const tier = payload.tier === "luxury" ? "luxury" : "standard";
+          const tier = Object.prototype.hasOwnProperty.call(TIERS, payload.tier) ? payload.tier : "standard";
           const cfg = TIERS[tier];
           const sub = await getOrCreateSubscription(payload.userId);
           const sameTierStillActive = isSubActive(sub) && sub.tier === tier;
@@ -987,7 +1102,8 @@ app.post("/telegram-webhook", async (req, res) => {
           await sendTelegramMessage(
             update.message.chat.id,
             `🔴 ${cfg.label} активирован! Действует до ${expiresAt.toLocaleDateString("ru-RU")}.\n` +
-              `Плюшки: ${GEN_COST_PER_IMAGE - cfg.discountPerImage} $/картинка, до ${cfg.maxImages} за раз, +${cfg.dailyBonus} $ в день.`
+              `Плюшки: ${GEN_COST_PER_IMAGE - cfg.discountPerImage} $/картинка, до ${cfg.maxImages} за раз, +${cfg.dailyBonus} $ в день.\n` +
+              `Продление вручную: ${cfg.renewStars} ⭐ за следующие 30 дней.`
           );
         } else {
           const newBalance = await adjustBalance(payload.userId, payload.amount);
@@ -1019,7 +1135,7 @@ const WELCOME_TEXT =
   "Привет! 👋✨ Я — бот, который рисует стикеры с помощью нейросети.\n\n" +
   "🎨 <b>Как создать стикеры</b>\n" +
   "Два способа на выбор:\n" +
-  "1️⃣ Кнопка меню внизу чата — там удобное приложение: выбор количества картинок, покупка $, Standard/Luxury подписка\n" +
+  "1️⃣ Кнопка меню внизу чата — там удобное приложение: выбор количества картинок, покупка $, Standard/Luxury/Ultimate подписка\n" +
   "2️⃣ Прямо тут, текстом:\n" +
   "   <code>/create гиппопотам в очках</code> — сгенерирует 4 картинки\n" +
   "   <code>/save Мои гиппопотамы</code> — сохранит их как стикерпак\n\n" +
@@ -1033,23 +1149,23 @@ const HELP_COMMANDS_TEXT =
   "<code>/save название пака</code> — сохранить последнюю генерацию\n\n" +
   "💰 <b>Баланс</b>\n" +
   "У новых — 15 $ бесплатно. Не хватает? Купи $ за Telegram Stars в приложении, либо спроси про промокод.\n\n" +
-  "🔴 <b>Premium (Standard / Luxury)</b>\n" +
-  "Приоритет генерации, скидка на картинки, больше картинок за раз, ежедневный бонус $, уникальный стиль. " +
-  "Первый месяц любого уровня — 1⭐. Кнопка Premium — в приложении.\n\n" +
+  "🔴 <b>Premium (Standard / Luxury / Ultimate)</b>\n" +
+  "Приоритет генерации, скидки, бонусы на баланс и больше картинок за раз. Первый месяц: Standard 19⭐, Luxury 52⭐, Ultimate 229⭐; продление вручную: 29⭐, 79⭐ и 350⭐ соответственно. Кнопка Premium — в приложении.\n\n" +
   "🔍 <b>Где сохранённые стикеры</b>\n" +
   "Иконка стикеров в поле ввода сообщения → «Мои наборы». Управлять паками (переименовать, удалить) — через официального бота @Stickers.\n\n" +
   "❓Любой другой вопрос — просто напиши текстом, отвечу.";
 
 const SYSTEM_CONTEXT = `Ты — дружелюбный помощник Telegram-бота для генерации стикеров нейросетью.
 Есть два способа создать стикеры: 1) через мини-приложение (кнопка меню внизу чата) —
-там можно выбрать количество картинок, купить $ за Stars, оформить Premium-подписку (Standard или Luxury);
+там можно выбрать количество картинок, купить $ за Stars, оформить Premium-подписку (Standard, Luxury или Ultimate);
 2) прямо в чате с ботом текстовыми командами: "/create описание" генерирует 4 картинки, а
 "/save название пака" сохраняет их как стикерпак. Стоимость генерации — 5 $ за картинку по умолчанию.
-Новым пользователям выдаётся 15 $ бесплатно. Есть два уровня Premium-подписки через Telegram Stars,
-у обоих первый месяц стоит всего 1 звезду: Standard (продление 30⭐) даёт 4 $ за картинку, до 6 картинок
-за раз, +10 $ в день и приоритет генерации; Luxury (продление 75⭐) даёт 2 $ за картинку, до 10 картинок
-за раз, +30 $ в день, максимальный приоритет без пауз и эксклюзивный премиум-стиль стикеров (глянцевая
-отделка, золотой контур). После сохранения стикеры сразу появляются в личном списке стикерпаков в
+Новым пользователям выдаётся 15 $ бесплатно. Есть три уровня Premium-подписки через Telegram Stars:
+Standard (19⭐ первый месяц, затем 29⭐) даёт 4 $ за картинку, до 6 картинок за раз и +3 $ в день;
+Luxury (52⭐ первый месяц, затем 79⭐) даёт 3 $ за картинку, до 10 картинок за раз и +8 $ в день;
+Ultimate (229⭐ первый месяц, затем 350⭐) даёт 2 $ за картинку, до 12 картинок за раз,
++35 $ в день, максимальный приоритет и эксклюзивный стиль стикеров. Подписки вручную продлеваются раз в 30 дней.
+После сохранения стикеры сразу появляются в личном списке стикерпаков в
 Telegram: их можно найти через встроенный поиск стикеров в любом чате (иконка стикеров в поле ввода
 сообщения → раздел "Мои наборы"), а управлять своими сохранёнными наборами можно через официального
 Telegram-бота @Stickers. Если генерация не удалась — можно просто попробовать ещё раз, это бесплатный
@@ -1095,7 +1211,7 @@ async function handleChatMessage(message) {
       return;
     }
 
-    const grantMatch = text.match(/^\/grantpremium\s+(standard|luxury)(?:\s+(\d+))?$/i);
+    const grantMatch = text.match(/^\/grantpremium\s+(standard|luxury|ultimate)(?:\s+(\d+))?$/i);
     if (grantMatch) {
       const tier = grantMatch[1].toLowerCase();
       const days = grantMatch[2] ? parseInt(grantMatch[2], 10) : SUBSCRIPTION_DURATION_DAYS;
@@ -1287,5 +1403,21 @@ app.get("/", (req, res) => {
   res.send("OK");
 });
 
-app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+app.listen(PORT, async () => {
+  console.log(`✅ Server running on port ${PORT}`);
+  if (!BOT_TOKEN || !TELEGRAM_WEBHOOK_SECRET) {
+    console.warn("Telegram webhook registration skipped: required server secrets are missing");
+    return;
+  }
 
+  const publicUrl = process.env.RENDER_EXTERNAL_URL || "https://stickerbot-backend.onrender.com";
+  try {
+    await telegramApi("setWebhook", {
+      url: new URL("/telegram-webhook", publicUrl).toString(),
+      secret_token: TELEGRAM_WEBHOOK_SECRET,
+    });
+    console.log("Telegram webhook registered with secret validation");
+  } catch (error) {
+    console.error("Telegram webhook registration failed:", error.message);
+  }
+});
