@@ -111,13 +111,47 @@ app.post("/api/balance/adjust", async (req, res) => {
     const userId = extractUserId(req.body.initData);
     if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
     const delta = Number(req.body.delta);
-    if (!Number.isFinite(delta) || delta === 0) {
-      return res.status(400).json({ error: "delta must be a non-zero number" });
+    if (!Number.isSafeInteger(delta) || delta === 0) {
+      return res.status(400).json({ error: "delta must be a non-zero integer" });
     }
+
+    let gameRewardClaim = null;
     if (delta > 0 && !isOwnerUser(userId)) {
-      return res.status(403).json({ error: "forbidden" });
+      if (delta > 5) {
+        return res.status(400).json({ error: "game reward cannot exceed 5" });
+      }
+      const today = new Date().toISOString().slice(0, 10);
+      gameRewardClaim = `__game_reward_${today}`;
+      const claim = await supabaseRequest(
+        `promo_redemptions?on_conflict=user_id,code`,
+        {
+          method: "POST",
+          headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
+          body: JSON.stringify({ user_id: userId, code: gameRewardClaim }),
+        }
+      );
+      if (!claim?.length) {
+        const balance = await getOrCreateBalance(userId);
+        return res.json({ balance, rewardAlreadyClaimed: true });
+      }
     }
-    const balance = await adjustBalance(userId, delta);
+
+    let balance;
+    try {
+      balance = await adjustBalance(userId, delta);
+    } catch (err) {
+      if (gameRewardClaim) {
+        try {
+          await supabaseRequest(
+            `promo_redemptions?user_id=eq.${userId}&code=eq.${encodeURIComponent(gameRewardClaim)}`,
+            { method: "DELETE" }
+          );
+        } catch (cleanupError) {
+          console.error("Game reward claim cleanup error:", cleanupError.message);
+        }
+      }
+      throw err;
+    }
     res.json({ balance });
   } catch (err) {
     if (err.code === "INSUFFICIENT_BALANCE") {
