@@ -1,4 +1,5 @@
 import express from "express";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import cors from "cors";
 import fetch from "node-fetch";
 import sharp from "sharp";
@@ -9,6 +10,7 @@ app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
+const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 const GEN_COST_PER_IMAGE = 5;
@@ -51,12 +53,15 @@ async function getOrCreateUserRow(userId) {
   const rows = await supabaseRequest(`balances?user_id=eq.${userId}&select=balance`);
   if (rows && rows.length > 0) return rows[0];
 
-  const created = await supabaseRequest(`balances`, {
+  const created = await supabaseRequest(`balances?on_conflict=user_id`, {
     method: "POST",
-    headers: { Prefer: "return=representation" },
+    headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
     body: JSON.stringify({ user_id: userId, balance: DEFAULT_BALANCE }),
   });
-  return created[0];
+  if (created?.length) return created[0];
+
+  const existing = await supabaseRequest(`balances?user_id=eq.${userId}&select=balance`);
+  return existing[0];
 }
 
 async function adjustBalance(userId, delta) {
@@ -106,10 +111,47 @@ app.post("/api/balance/adjust", async (req, res) => {
     const userId = extractUserId(req.body.initData);
     if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
     const delta = Number(req.body.delta);
-    if (!Number.isFinite(delta) || delta === 0) {
-      return res.status(400).json({ error: "delta must be a non-zero number" });
+    if (!Number.isSafeInteger(delta) || delta === 0) {
+      return res.status(400).json({ error: "delta must be a non-zero integer" });
     }
-    const balance = await adjustBalance(userId, delta);
+
+    let gameRewardClaim = null;
+    if (delta > 0 && !isOwnerUser(userId)) {
+      if (delta > 5) {
+        return res.status(400).json({ error: "game reward cannot exceed 5" });
+      }
+      const today = new Date().toISOString().slice(0, 10);
+      gameRewardClaim = `__game_reward_${today}`;
+      const claim = await supabaseRequest(
+        `promo_redemptions?on_conflict=user_id,code`,
+        {
+          method: "POST",
+          headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
+          body: JSON.stringify({ user_id: userId, code: gameRewardClaim }),
+        }
+      );
+      if (!claim?.length) {
+        const balance = await getOrCreateBalance(userId);
+        return res.json({ balance, rewardAlreadyClaimed: true });
+      }
+    }
+
+    let balance;
+    try {
+      balance = await adjustBalance(userId, delta);
+    } catch (err) {
+      if (gameRewardClaim) {
+        try {
+          await supabaseRequest(
+            `promo_redemptions?user_id=eq.${userId}&code=eq.${encodeURIComponent(gameRewardClaim)}`,
+            { method: "DELETE" }
+          );
+        } catch (cleanupError) {
+          console.error("Game reward claim cleanup error:", cleanupError.message);
+        }
+      }
+      throw err;
+    }
     res.json({ balance });
   } catch (err) {
     if (err.code === "INSUFFICIENT_BALANCE") {
@@ -185,9 +227,9 @@ async function getOrCreateSubscription(userId) {
   );
   if (rows && rows.length > 0) return rows[0];
 
-  const created = await supabaseRequest(`subscriptions`, {
+  const created = await supabaseRequest(`subscriptions?on_conflict=user_id`, {
     method: "POST",
-    headers: { Prefer: "return=representation" },
+    headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
     body: JSON.stringify({
       user_id: userId,
       active: false,
@@ -196,7 +238,12 @@ async function getOrCreateSubscription(userId) {
       tier: null,
     }),
   });
-  return created[0];
+  if (created?.length) return created[0];
+
+  const existing = await supabaseRequest(
+    `subscriptions?user_id=eq.${userId}&select=user_id,active,expires_at,first_purchase_done,last_bonus_date,tier`
+  );
+  return existing[0];
 }
 
 function isSubActive(sub) {
@@ -440,6 +487,151 @@ app.post("/api/my-packs", async (req, res) => {
   }
 });
 
+async function getOwnedStickerPack(userId, shortName) {
+  if (typeof shortName !== "string" || !/^[A-Za-z0-9_]{1,64}$/.test(shortName)) return null;
+  const rows = await supabaseRequest(
+    `sticker_packs?user_id=eq.${userId}&short_name=eq.${encodeURIComponent(shortName)}&select=short_name,title`
+  );
+  return rows?.[0] || null;
+}
+
+async function telegramApi(method, payload) {
+  const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json();
+  if (!response.ok || !data.ok) throw new Error(data.description || `Telegram ${method} failed`);
+  return data.result;
+}
+
+app.post("/api/my-packs/stickers", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
+    const pack = await getOwnedStickerPack(userId, req.body.shortName);
+    if (!pack) return res.status(404).json({ error: "pack not found" });
+    const stickerSet = await telegramApi("getStickerSet", { name: pack.short_name });
+    res.json({
+      pack: { shortName: pack.short_name, title: stickerSet.title || pack.title },
+      stickers: (stickerSet.stickers || []).map((sticker) => ({
+        fileId: sticker.file_id,
+        fileUniqueId: sticker.file_unique_id,
+        emoji: sticker.emoji || "😀",
+        width: sticker.width,
+        height: sticker.height,
+      })),
+    });
+  } catch (err) {
+    console.error("Pack-stickers error:", err.message);
+    res.status(500).json({ error: "could not load sticker pack" });
+  }
+});
+
+app.post("/api/my-packs/sticker-image", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
+    const pack = await getOwnedStickerPack(userId, req.body.shortName);
+    if (!pack) return res.status(404).json({ error: "pack not found" });
+    const stickerSet = await telegramApi("getStickerSet", { name: pack.short_name });
+    const fileId = req.body.fileId;
+    if (typeof fileId !== "string" || !stickerSet.stickers?.some((sticker) => sticker.file_id === fileId)) {
+      return res.status(404).json({ error: "sticker not found in pack" });
+    }
+    const file = await telegramApi("getFile", { file_id: fileId });
+    if (!file.file_path || file.file_path.includes("..")) throw new Error("invalid Telegram file path");
+    const imageResponse = await fetch(`https://api.telegram.org/file/bot${BOT_TOKEN}/${file.file_path}`);
+    if (!imageResponse.ok) throw new Error("could not fetch Telegram sticker image");
+    const bytes = Buffer.from(await imageResponse.arrayBuffer());
+    if (bytes.length > 2 * 1024 * 1024) return res.status(413).end();
+    res.set("Content-Type", file.file_path.endsWith(".webp") ? "image/webp" : "application/octet-stream");
+    res.set("Cache-Control", "private, max-age=300");
+    res.send(bytes);
+  } catch (err) {
+    console.error("Pack-image error:", err.message);
+    res.status(500).json({ error: "could not load sticker image" });
+  }
+});
+
+app.post("/api/my-packs/rename", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
+    const pack = await getOwnedStickerPack(userId, req.body.shortName);
+    const title = typeof req.body.title === "string" ? req.body.title.trim() : "";
+    if (!pack) return res.status(404).json({ error: "pack not found" });
+    if (!title || [...title].length > 64) return res.status(400).json({ error: "title must be 1 to 64 characters" });
+    await telegramApi("setStickerSetTitle", { name: pack.short_name, title });
+    await supabaseRequest(`sticker_packs?user_id=eq.${userId}&short_name=eq.${encodeURIComponent(pack.short_name)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title }),
+    });
+    res.json({ ok: true, title });
+  } catch (err) {
+    console.error("Pack-rename error:", err.message);
+    res.status(500).json({ error: "could not rename sticker pack" });
+  }
+});
+
+app.post("/api/my-packs/edit-sticker", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
+    const pack = await getOwnedStickerPack(userId, req.body.shortName);
+    if (!pack) return res.status(404).json({ error: "pack not found" });
+    const fileId = req.body.fileId;
+    const emoji = typeof req.body.emoji === "string" ? req.body.emoji.trim() : "";
+    if (!emoji || [...emoji].length > 16) return res.status(400).json({ error: "emoji is required" });
+    const stickerSet = await telegramApi("getStickerSet", { name: pack.short_name });
+    if (!stickerSet.stickers?.some((sticker) => sticker.file_id === fileId)) {
+      return res.status(404).json({ error: "sticker not found in pack" });
+    }
+    await telegramApi("setStickerEmojiList", { sticker: fileId, emoji_list: [emoji] });
+    res.json({ ok: true, emoji });
+  } catch (err) {
+    console.error("Edit-sticker error:", err.message);
+    res.status(500).json({ error: "could not update sticker emoji" });
+  }
+});
+
+app.post("/api/my-packs/delete", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
+    const pack = await getOwnedStickerPack(userId, req.body.shortName);
+    if (!pack) return res.status(404).json({ error: "pack not found" });
+    await telegramApi("deleteStickerSet", { name: pack.short_name });
+    await supabaseRequest(`sticker_packs?user_id=eq.${userId}&short_name=eq.${encodeURIComponent(pack.short_name)}`, {
+      method: "DELETE",
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Delete-pack error:", err.message);
+    res.status(500).json({ error: "could not delete sticker pack" });
+  }
+});
+
+app.post("/api/my-packs/delete-sticker", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
+    const pack = await getOwnedStickerPack(userId, req.body.shortName);
+    if (!pack) return res.status(404).json({ error: "pack not found" });
+    const stickerSet = await telegramApi("getStickerSet", { name: pack.short_name });
+    const fileId = req.body.fileId;
+    if (typeof fileId !== "string" || !stickerSet.stickers?.some((sticker) => sticker.file_id === fileId)) {
+      return res.status(404).json({ error: "sticker not found in pack" });
+    }
+    await telegramApi("deleteStickerFromSet", { sticker: fileId });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Delete-sticker error:", err.message);
+    res.status(500).json({ error: "could not delete sticker" });
+  }
+});
+
 app.post("/api/add-to-pack", async (req, res) => {
   try {
     const { packName, targetPackShortName, stickers, initData } = req.body;
@@ -586,13 +778,31 @@ function slugify(str) {
 }
 
 function extractUserId(initData) {
-  if (!initData) return null;
+  if (typeof initData !== "string" || !BOT_TOKEN) return null;
   try {
     const params = new URLSearchParams(initData);
+    const hash = params.get("hash");
+    if (!hash || !/^[a-f0-9]{64}$/i.test(hash)) return null;
+
+    const authDate = Number(params.get("auth_date"));
+    const now = Math.floor(Date.now() / 1000);
+    if (!Number.isInteger(authDate) || authDate > now + 30 || now - authDate > 86400) return null;
+
+    const dataCheckString = [...params.entries()]
+      .filter(([key]) => key !== "hash")
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, value]) => `${key}=${value}`)
+      .join("\n");
+    const secretKey = createHmac("sha256", "WebAppData").update(BOT_TOKEN).digest();
+    const expectedHash = createHmac("sha256", secretKey).update(dataCheckString).digest();
+    const receivedHash = Buffer.from(hash, "hex");
+    if (receivedHash.length !== expectedHash.length || !timingSafeEqual(receivedHash, expectedHash)) return null;
+
     const userJson = params.get("user");
     if (!userJson) return null;
     const user = JSON.parse(userJson);
-    return user.id;
+    const userId = Number(user.id);
+    return Number.isSafeInteger(userId) && userId > 0 ? userId : null;
   } catch {
     return null;
   }
@@ -728,6 +938,16 @@ app.post("/api/create-invoice", async (req, res) => {
 });
 
 app.post("/telegram-webhook", async (req, res) => {
+  if (!TELEGRAM_WEBHOOK_SECRET) {
+    console.error("TELEGRAM_WEBHOOK_SECRET is not configured; rejecting webhook updates");
+    return res.sendStatus(503);
+  }
+  const receivedSecret = Buffer.from(req.get("X-Telegram-Bot-Api-Secret-Token") || "");
+  const expectedSecret = Buffer.from(TELEGRAM_WEBHOOK_SECRET);
+  if (receivedSecret.length !== expectedSecret.length || !timingSafeEqual(receivedSecret, expectedSecret)) {
+    return res.sendStatus(401);
+  }
+
   try {
     const update = req.body;
 
