@@ -1,4 +1,5 @@
 import express from "express";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import cors from "cors";
 import fetch from "node-fetch";
 import sharp from "sharp";
@@ -9,6 +10,7 @@ app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
+const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 const GEN_COST_PER_IMAGE = 5;
@@ -51,12 +53,15 @@ async function getOrCreateUserRow(userId) {
   const rows = await supabaseRequest(`balances?user_id=eq.${userId}&select=balance`);
   if (rows && rows.length > 0) return rows[0];
 
-  const created = await supabaseRequest(`balances`, {
+  const created = await supabaseRequest(`balances?on_conflict=user_id`, {
     method: "POST",
-    headers: { Prefer: "return=representation" },
+    headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
     body: JSON.stringify({ user_id: userId, balance: DEFAULT_BALANCE }),
   });
-  return created[0];
+  if (created?.length) return created[0];
+
+  const existing = await supabaseRequest(`balances?user_id=eq.${userId}&select=balance`);
+  return existing[0];
 }
 
 async function adjustBalance(userId, delta) {
@@ -108,6 +113,9 @@ app.post("/api/balance/adjust", async (req, res) => {
     const delta = Number(req.body.delta);
     if (!Number.isFinite(delta) || delta === 0) {
       return res.status(400).json({ error: "delta must be a non-zero number" });
+    }
+    if (delta > 0 && !isOwnerUser(userId)) {
+      return res.status(403).json({ error: "forbidden" });
     }
     const balance = await adjustBalance(userId, delta);
     res.json({ balance });
@@ -185,9 +193,9 @@ async function getOrCreateSubscription(userId) {
   );
   if (rows && rows.length > 0) return rows[0];
 
-  const created = await supabaseRequest(`subscriptions`, {
+  const created = await supabaseRequest(`subscriptions?on_conflict=user_id`, {
     method: "POST",
-    headers: { Prefer: "return=representation" },
+    headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
     body: JSON.stringify({
       user_id: userId,
       active: false,
@@ -196,7 +204,12 @@ async function getOrCreateSubscription(userId) {
       tier: null,
     }),
   });
-  return created[0];
+  if (created?.length) return created[0];
+
+  const existing = await supabaseRequest(
+    `subscriptions?user_id=eq.${userId}&select=user_id,active,expires_at,first_purchase_done,last_bonus_date,tier`
+  );
+  return existing[0];
 }
 
 function isSubActive(sub) {
@@ -586,13 +599,31 @@ function slugify(str) {
 }
 
 function extractUserId(initData) {
-  if (!initData) return null;
+  if (typeof initData !== "string" || !BOT_TOKEN) return null;
   try {
     const params = new URLSearchParams(initData);
+    const hash = params.get("hash");
+    if (!hash || !/^[a-f0-9]{64}$/i.test(hash)) return null;
+
+    const authDate = Number(params.get("auth_date"));
+    const now = Math.floor(Date.now() / 1000);
+    if (!Number.isInteger(authDate) || authDate > now + 30 || now - authDate > 86400) return null;
+
+    const dataCheckString = [...params.entries()]
+      .filter(([key]) => key !== "hash")
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, value]) => `${key}=${value}`)
+      .join("\n");
+    const secretKey = createHmac("sha256", "WebAppData").update(BOT_TOKEN).digest();
+    const expectedHash = createHmac("sha256", secretKey).update(dataCheckString).digest();
+    const receivedHash = Buffer.from(hash, "hex");
+    if (receivedHash.length !== expectedHash.length || !timingSafeEqual(receivedHash, expectedHash)) return null;
+
     const userJson = params.get("user");
     if (!userJson) return null;
     const user = JSON.parse(userJson);
-    return user.id;
+    const userId = Number(user.id);
+    return Number.isSafeInteger(userId) && userId > 0 ? userId : null;
   } catch {
     return null;
   }
@@ -728,6 +759,16 @@ app.post("/api/create-invoice", async (req, res) => {
 });
 
 app.post("/telegram-webhook", async (req, res) => {
+  if (!TELEGRAM_WEBHOOK_SECRET) {
+    console.error("TELEGRAM_WEBHOOK_SECRET is not configured; rejecting webhook updates");
+    return res.sendStatus(503);
+  }
+  const receivedSecret = Buffer.from(req.get("X-Telegram-Bot-Api-Secret-Token") || "");
+  const expectedSecret = Buffer.from(TELEGRAM_WEBHOOK_SECRET);
+  if (receivedSecret.length !== expectedSecret.length || !timingSafeEqual(receivedSecret, expectedSecret)) {
+    return res.sendStatus(401);
+  }
+
   try {
     const update = req.body;
 
