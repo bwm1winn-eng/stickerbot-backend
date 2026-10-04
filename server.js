@@ -1716,4 +1716,3 @@ app.listen(PORT, async () => {
     console.error("Telegram webhook registration failed:", error.message);
   }
 });
-
