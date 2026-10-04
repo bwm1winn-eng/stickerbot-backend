@@ -15,6 +15,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 const GEN_COST_PER_IMAGE = 5;
 const DEFAULT_BALANCE = 15;
+const FREE_DAILY_IMAGE_LIMIT = 4;
 
 if (!BOT_TOKEN) console.warn("⚠️  BOT_TOKEN не задан — добавление в стикерпак не будет работать");
 if (!SUPABASE_URL || !SUPABASE_KEY) console.warn("⚠️  SUPABASE_URL/SUPABASE_KEY не заданы — баланс работать не будет");
@@ -83,6 +84,45 @@ async function adjustBalance(userId, delta) {
   return updated[0].balance;
 }
 
+function utcDateKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function freeImageClaimCode(day, slot) {
+  return `__free_image_${day}_${slot}`;
+}
+
+async function getFreeDailyImageUsage(userId, day = utcDateKey()) {
+  const codes = Array.from({ length: FREE_DAILY_IMAGE_LIMIT }, (_, i) => freeImageClaimCode(day, i + 1));
+  const rows = await supabaseRequest(
+    `promo_redemptions?user_id=eq.${userId}&code=in.(${codes.join(",")})&select=code`
+  );
+  return { limit: FREE_DAILY_IMAGE_LIMIT, used: rows?.length || 0 };
+}
+
+// Claims use the unique (user_id, code) key to serialize simultaneous requests.
+async function reserveFreeDailyImageSlots(userId, count, day = utcDateKey()) {
+  const reserved = [];
+  for (let slot = 1; slot <= FREE_DAILY_IMAGE_LIMIT && reserved.length < count; slot++) {
+    const code = freeImageClaimCode(day, slot);
+    const rows = await supabaseRequest("promo_redemptions?on_conflict=user_id,code", {
+      method: "POST",
+      headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
+      body: JSON.stringify({ user_id: userId, code }),
+    });
+    if (rows?.length) reserved.push(code);
+  }
+  return reserved;
+}
+
+async function releaseFreeDailyImageSlots(userId, codes) {
+  if (!codes?.length) return;
+  await supabaseRequest(
+    `promo_redemptions?user_id=eq.${userId}&code=in.(${codes.join(",")})`,
+    { method: "DELETE" }
+  );
+}
+
 app.post("/api/balance", async (req, res) => {
   try {
     const userId = extractUserId(req.body.initData);
@@ -93,6 +133,9 @@ app.post("/api/balance", async (req, res) => {
     const sub = await getOrCreateSubscription(userId);
     const bonusApplied = await maybeApplyDailyBonus(userId, sub);
     const balance = bonusApplied > 0 ? await getOrCreateBalance(userId) : row.balance;
+    const freeDaily = !tierConfig(sub) && !isOwner
+      ? await getFreeDailyImageUsage(userId)
+      : null;
 
     res.json({
       balance,
@@ -102,6 +145,7 @@ app.post("/api/balance", async (req, res) => {
         tier: isSubActive(sub) ? sub.tier : null,
         expiresAt: sub.expires_at,
       },
+      ...(freeDaily ? { freeDaily: { ...freeDaily, remaining: Math.max(0, freeDaily.limit - freeDaily.used) } } : {}),
     });
   } catch (err) {
     console.error("Balance fetch error:", err.message);
@@ -480,34 +524,70 @@ app.post("/api/generate", async (req, res) => {
     const costPerImage = cfg ? GEN_COST_PER_IMAGE - cfg.discountPerImage : GEN_COST_PER_IMAGE;
 
     const NUM_IMAGES = Math.min(Math.max(parseInt(count, 10) || 4, 1), maxImages);
-    const cost = NUM_IMAGES * costPerImage;
+    const limitedFreeUser = !premium && !isOwnerUser(userId);
+    const reservedSlots = limitedFreeUser
+      ? await reserveFreeDailyImageSlots(userId, NUM_IMAGES)
+      : [];
+    const requestedImages = limitedFreeUser ? reservedSlots.length : NUM_IMAGES;
+    if (requestedImages === 0) {
+      const usage = await getFreeDailyImageUsage(userId);
+      return res.status(429).json({
+        error: "daily free image limit reached",
+        code: "DAILY_FREE_LIMIT",
+        freeDaily: { ...usage, remaining: 0 },
+      });
+    }
+    const cost = requestedImages * costPerImage;
 
     let balanceAfterCharge;
     try {
       balanceAfterCharge = await adjustBalance(userId, -cost);
     } catch (err) {
+      if (limitedFreeUser) await releaseFreeDailyImageSlots(userId, reservedSlots);
       if (err.code === "INSUFFICIENT_BALANCE") {
         return res.status(400).json({ error: "insufficient balance", code: "INSUFFICIENT_BALANCE" });
       }
       throw err;
     }
 
-    const images = await generateStickerSet(
-      prompt,
-      NUM_IMAGES,
-      (id) => `${req.protocol}://${req.get("host")}/api/image/${id}`,
-      { cfg }
-    );
+    let images;
+    try {
+      images = await generateStickerSet(
+        prompt,
+        requestedImages,
+        (id) => `${req.protocol}://${req.get("host")}/api/image/${id}`,
+        { cfg }
+      );
+    } catch (err) {
+      await adjustBalance(userId, cost);
+      if (limitedFreeUser) await releaseFreeDailyImageSlots(userId, reservedSlots);
+      throw err;
+    }
+
+    if (limitedFreeUser && images.length < reservedSlots.length) {
+      await releaseFreeDailyImageSlots(userId, reservedSlots.slice(images.length));
+    }
+    if (images.length < requestedImages) {
+      balanceAfterCharge = await adjustBalance(userId, (requestedImages - images.length) * costPerImage);
+    }
 
     if (images.length === 0) {
-      const refunded = await adjustBalance(userId, cost);
+      const usage = limitedFreeUser ? await getFreeDailyImageUsage(userId) : null;
       return res.status(502).json({
         error: "Не удалось сгенерировать ни одной картинки. Попробуй ещё раз.",
-        balance: refunded,
+        balance: balanceAfterCharge,
+        ...(usage ? { freeDaily: { ...usage, remaining: Math.max(0, usage.limit - usage.used) } } : {}),
       });
     }
 
-    res.json({ images, balance: balanceAfterCharge, cost, premium });
+    const freeDaily = limitedFreeUser ? await getFreeDailyImageUsage(userId) : null;
+    res.json({
+      images,
+      balance: balanceAfterCharge,
+      cost: images.length * costPerImage,
+      premium,
+      ...(freeDaily ? { freeDaily: { ...freeDaily, remaining: Math.max(0, freeDaily.limit - freeDaily.used) } } : {}),
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "internal error" });
@@ -972,14 +1052,14 @@ async function addStickerToSet(userId, shortName, pngBuffer) {
 
 const PORT = process.env.PORT || 3000;
 
-const DOLLARS_PER_STAR = 10;
+const DOLLARS_PER_STAR = 8;
 const MIN_AMOUNT = 10;
 const MAX_AMOUNT = 10000;
 
 const DISCOUNT_TIERS = [
   { amount: 50, discount: 0 },
-  { amount: 500, discount: 0.08 },
-  { amount: 5000, discount: 0.15 },
+  { amount: 500, discount: 0 },
+  { amount: 5000, discount: 0 },
 ];
 
 const STAR_PACKAGES = [
