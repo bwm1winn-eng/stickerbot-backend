@@ -15,7 +15,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 const GEN_COST_PER_IMAGE = 5;
 const DEFAULT_BALANCE = 15;
-const FREE_DAILY_IMAGE_LIMIT = 4;
+const FREE_DAILY_IMAGE_LIMIT = 4;\nconst CHANNEL_TASK_CHAT = process.env.CHANNEL_TASK_CHAT || "@Lordeuso";\nconst CHANNEL_TASK_REWARD = 10;\nconst CHANNEL_TASK_CLAIM_CODE = "__task_channel_lordeuso";
 
 if (!BOT_TOKEN) console.warn("⚠️  BOT_TOKEN не задан — добавление в стикерпак не будет работать");
 if (!SUPABASE_URL || !SUPABASE_KEY) console.warn("⚠️  SUPABASE_URL/SUPABASE_KEY не заданы — баланс работать не будет");
@@ -68,7 +68,26 @@ async function getOrCreateUserRow(userId) {
   return existing[0];
 }
 
-async function adjustBalance(userId, delta) {
+async function recordActivity(userId, event) {
+  try {
+    await supabaseRequest("account_activity", {
+      method: "POST",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({
+        user_id: userId,
+        event_type: event.type || "adjustment",
+        delta: event.delta || 0,
+        balance_after: event.balanceAfter ?? null,
+        description: event.description || "",
+        metadata: event.metadata || {},
+      }),
+    });
+  } catch (err) {
+    console.error("Activity history write failed:", err.message);
+  }
+}
+
+async function adjustBalance(userId, delta, event = {}) {
   const current = await getOrCreateBalance(userId);
   const next = current + delta;
   if (next < 0) {
@@ -81,9 +100,15 @@ async function adjustBalance(userId, delta) {
     headers: { Prefer: "return=representation" },
     body: JSON.stringify({ balance: next }),
   });
-  return updated[0].balance;
+  const balance = updated[0].balance;
+  await recordActivity(userId, {
+    ...event,
+    type: event.type || "adjustment",
+    delta,
+    balanceAfter: balance,
+  });
+  return balance;
 }
-
 function utcDateKey() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -153,6 +178,99 @@ app.post("/api/balance", async (req, res) => {
   }
 });
 
+app.post("/api/history", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
+    const items = await supabaseRequest(
+      `account_activity?user_id=eq.${userId}&select=id,event_type,delta,balance_after,description,metadata,created_at&order=created_at.desc,id.desc&limit=100`
+    );
+    res.json({ items: items || [] });
+  } catch (err) {
+    console.error("Activity history fetch error:", err.message);
+    res.status(500).json({ error: "could not load history" });
+  }
+});
+
+async function hasChannelTaskClaim(userId) {
+  const rows = await supabaseRequest(
+    `promo_redemptions?user_id=eq.${userId}&code=eq.${encodeURIComponent(CHANNEL_TASK_CLAIM_CODE)}&select=code&limit=1`
+  );
+  return !!rows?.length;
+}
+
+async function verifyChannelTaskMembership(userId) {
+  if (!BOT_TOKEN) throw new Error("Telegram bot is not configured");
+  const query = new URLSearchParams({ chat_id: CHANNEL_TASK_CHAT, user_id: String(userId) });
+  const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getChatMember?${query.toString()}`);
+  const payload = await response.json();
+  if (!response.ok || !payload?.ok || !payload.result?.user || Number(payload.result.user.id) !== Number(userId)) {
+    throw new Error("Telegram membership check unavailable");
+  }
+  const member = payload.result;
+  return member.status === "creator" || member.status === "administrator" || member.status === "member" ||
+    (member.status === "restricted" && member.is_member === true);
+}
+
+app.post("/api/tasks/channel/status", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "invalid Telegram Web App data" });
+    const claimed = await hasChannelTaskClaim(userId);
+    if (claimed) return res.json({ claimed: true, joined: null, reward: CHANNEL_TASK_REWARD });
+    const joined = await verifyChannelTaskMembership(userId);
+    res.json({ claimed: false, joined, reward: CHANNEL_TASK_REWARD });
+  } catch (err) {
+    console.error("Channel task status check failed:", err.message);
+    res.status(503).json({ error: "membership verification unavailable", code: "CHANNEL_CHECK_UNAVAILABLE" });
+  }
+});
+
+app.post("/api/tasks/channel/claim", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "invalid Telegram Web App data" });
+    if (await hasChannelTaskClaim(userId)) {
+      return res.status(409).json({ error: "reward already claimed", code: "TASK_ALREADY_CLAIMED" });
+    }
+    if (!(await verifyChannelTaskMembership(userId))) {
+      return res.status(403).json({ error: "join the channel first", code: "CHANNEL_NOT_JOINED" });
+    }
+
+    // The existing unique (user_id, code) key makes the reward claim one-time and race-safe.
+    const claim = await supabaseRequest("promo_redemptions?on_conflict=user_id,code", {
+      method: "POST",
+      headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
+      body: JSON.stringify({ user_id: userId, code: CHANNEL_TASK_CLAIM_CODE }),
+    });
+    if (!claim?.length) {
+      return res.status(409).json({ error: "reward already claimed", code: "TASK_ALREADY_CLAIMED" });
+    }
+
+    try {
+      const balance = await adjustBalance(userId, CHANNEL_TASK_REWARD, {
+        type: "reward",
+        description: "Channel subscription task",
+        metadata: { source: "channel_task", channel: CHANNEL_TASK_CHAT },
+      });
+      return res.json({ ok: true, balance, reward: CHANNEL_TASK_REWARD });
+    } catch (err) {
+      await supabaseRequest(
+        `promo_redemptions?user_id=eq.${userId}&code=eq.${encodeURIComponent(CHANNEL_TASK_CLAIM_CODE)}`,
+        { method: "DELETE" }
+      );
+      throw err;
+    }
+  } catch (err) {
+    if (err.message === "Telegram membership check unavailable" || err.message === "Telegram bot is not configured") {
+      console.error("Channel task claim verification failed:", err.message);
+      return res.status(503).json({ error: "membership verification unavailable", code: "CHANNEL_CHECK_UNAVAILABLE" });
+    }
+    console.error("Channel task claim failed:", err.message);
+    return res.status(500).json({ error: "could not grant task reward" });
+  }
+});
+
 app.post("/api/balance/adjust", async (req, res) => {
   try {
     const userId = extractUserId(req.body.initData);
@@ -185,7 +303,11 @@ app.post("/api/balance/adjust", async (req, res) => {
 
     let balance;
     try {
-      balance = await adjustBalance(userId, delta);
+      balance = await adjustBalance(userId, delta, {
+        type: delta > 0 ? "reward" : "spend",
+        description: delta > 0 ? "Game reward" : "Game play",
+        metadata: { source: "mini_game" },
+      });
     } catch (err) {
       if (gameRewardClaim) {
         try {
@@ -322,7 +444,11 @@ async function maybeApplyDailyBonus(userId, sub) {
   const today = new Date().toISOString().slice(0, 10);
   if (sub.last_bonus_date === today) return 0;
 
-  await adjustBalance(userId, cfg.dailyBonus);
+  await adjustBalance(userId, cfg.dailyBonus, {
+    type: "reward",
+    description: "Subscription daily coins",
+    metadata: { source: "subscription_daily_bonus", tier: sub.tier },
+  });
   await supabaseRequest(`subscriptions?user_id=eq.${userId}`, {
     method: "PATCH",
     body: JSON.stringify({ last_bonus_date: today }),
@@ -499,7 +625,11 @@ app.post("/api/promo/redeem", async (req, res) => {
       body: JSON.stringify({ uses_count: promo.uses_count + 1 }),
     });
 
-    const balance = await adjustBalance(userId, promo.amount);
+    const balance = await adjustBalance(userId, promo.amount, {
+      type: "reward",
+      description: "Promo code",
+      metadata: { source: "promo_code" },
+    });
     res.json({ balance, amount: promo.amount });
   } catch (err) {
     console.error("Promo redeem error:", err.message);
@@ -534,7 +664,11 @@ app.post("/api/generate", async (req, res) => {
     const cost = requestedImages * costPerImage;
     let balanceAfterCharge;
     try {
-      balanceAfterCharge = await adjustBalance(userId, -cost);
+      balanceAfterCharge = await adjustBalance(userId, -cost, {
+        type: "generation",
+        description: "Sticker generation",
+        metadata: { count: requestedImages, costPerImage },
+      });
     } catch (err) {
       if (limitedFreeUser) await releaseFreeDailyImageSlots(userId, reservedSlots);
       if (err.code === "INSUFFICIENT_BALANCE") return res.status(400).json({ error: "insufficient balance", code: "INSUFFICIENT_BALANCE" });
@@ -544,12 +678,20 @@ app.post("/api/generate", async (req, res) => {
     try {
       images = await generateStickerSet(prompt, requestedImages, (id) => `${req.protocol}://${req.get("host")}/api/image/${id}`, { cfg });
     } catch (err) {
-      await adjustBalance(userId, cost);
+      await adjustBalance(userId, cost, {
+        type: "refund",
+        description: "Generation failed — coins refunded",
+        metadata: { count: requestedImages },
+      });
       if (limitedFreeUser) await releaseFreeDailyImageSlots(userId, reservedSlots);
       throw err;
     }
     if (limitedFreeUser && images.length < reservedSlots.length) await releaseFreeDailyImageSlots(userId, reservedSlots.slice(images.length));
-    if (images.length < requestedImages) balanceAfterCharge = await adjustBalance(userId, (requestedImages - images.length) * costPerImage);
+    if (images.length < requestedImages) balanceAfterCharge = await adjustBalance(userId, (requestedImages - images.length) * costPerImage, {
+      type: "refund",
+      description: "Uncreated stickers — coins refunded",
+      metadata: { count: requestedImages - images.length },
+    });
     if (images.length === 0) {
       const usage = limitedFreeUser ? await getFreeDailyImageUsage(userId) : null;
       return res.status(502).json({ error: "Не удалось сгенерировать ни одной картинки. Попробуй ещё раз.", balance: balanceAfterCharge, ...(usage ? { freeDaily: { ...usage, remaining: Math.max(0, usage.limit - usage.used) } } : {}) });
@@ -1146,6 +1288,12 @@ app.post("/telegram-webhook", async (req, res) => {
             }),
           });
 
+          await recordActivity(payload.userId, {
+            type: "subscription",
+            delta: 0,
+            description: "Premium subscription",
+            metadata: { tier, stars: update.message.successful_payment.total_amount, expiresAt: expiresAt.toISOString() },
+          });
           console.log(`✅ ${cfg.label} активирован: user ${payload.userId}, до ${expiresAt.toISOString()}`);
           await sendTelegramMessage(
             update.message.chat.id,
@@ -1154,7 +1302,11 @@ app.post("/telegram-webhook", async (req, res) => {
               `Продление вручную: ${cfg.renewStars} ⭐ за следующие 30 дней.`
           );
         } else {
-          const newBalance = await adjustBalance(payload.userId, payload.amount);
+          const newBalance = await adjustBalance(payload.userId, payload.amount, {
+            type: "topup",
+            description: "Coins purchased with Telegram Stars",
+            metadata: { coins: payload.amount, stars: update.message.successful_payment.total_amount },
+          });
           console.log(`✅ Оплата зачислена: user ${payload.userId}, +${payload.amount} $ → баланс ${newBalance}`);
           await sendTelegramMessage(
             update.message.chat.id,
@@ -1248,7 +1400,11 @@ async function handleChatMessage(message) {
 
     if (addMatch) {
       const delta = parseInt(addMatch[1], 10);
-      const newBalance = await adjustBalance(fromId, delta);
+      const newBalance = await adjustBalance(fromId, delta, {
+        type: delta > 0 ? "adjustment" : "spend",
+        description: "Bot balance adjustment",
+        metadata: { source: "owner_command" },
+      });
       await sendTelegramMessage(chatId, `✅ Баланс изменён на ${delta > 0 ? "+" : ""}${delta}. Текущий баланс: ${newBalance} $`);
       return;
     }
@@ -1323,7 +1479,11 @@ async function handleChatMessage(message) {
 
     let balanceAfterCharge;
     try {
-      balanceAfterCharge = await adjustBalance(fromId, -cost);
+      balanceAfterCharge = await adjustBalance(fromId, -cost, {
+        type: "generation",
+        description: "Sticker generation",
+        metadata: { count: CHAT_GEN_COUNT, source: "telegram_chat" },
+      });
     } catch (err) {
       if (err.code === "INSUFFICIENT_BALANCE") {
         await sendTelegramMessage(
@@ -1341,7 +1501,11 @@ async function handleChatMessage(message) {
     const images = await generateStickerSet(description, CHAT_GEN_COUNT, undefined, { cfg });
 
     if (images.length === 0) {
-      const refunded = await adjustBalance(fromId, cost);
+      const refunded = await adjustBalance(fromId, cost, {
+        type: "refund",
+        description: "Generation failed — coins refunded",
+        metadata: { count: CHAT_GEN_COUNT, source: "telegram_chat" },
+      });
       await sendTelegramMessage(chatId, `Не получилось сгенерировать ни одной картинки — вернул ${cost} $ на баланс (сейчас ${refunded} $). Попробуй ещё раз.`);
       return;
     }
