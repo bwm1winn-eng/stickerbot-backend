@@ -41,7 +41,19 @@ async function supabaseRequest(path, options = {}) {
   });
   const raw = await res.text();
   if (!res.ok) {
-    throw new Error(`Supabase error ${res.status}: ${raw.slice(0, 300)}`);
+    let dbError;
+    try {
+      dbError = JSON.parse(raw);
+    } catch {
+      dbError = null;
+    }
+    const err = new Error(dbError?.message || `Supabase error ${res.status}: ${raw.slice(0, 300)}`);
+    err.status = res.status;
+    err.code = dbError?.code || "SUPABASE_ERROR";
+    err.dbCode = dbError?.code;
+    err.details = dbError?.details;
+    err.hint = dbError?.hint;
+    throw err;
   }
   if (!raw) return null;
   try {
@@ -91,26 +103,25 @@ async function recordActivity(userId, event) {
 }
 
 async function adjustBalance(userId, delta, event = {}) {
-  const current = await getOrCreateBalance(userId);
-  const next = current + delta;
-  if (next < 0) {
-    const err = new Error("insufficient balance");
-    err.code = "INSUFFICIENT_BALANCE";
+  try {
+    const balance = await supabaseRequest("rpc/account_adjust_balance", {
+      method: "POST",
+      body: JSON.stringify({
+        p_user_id: userId,
+        p_delta: delta,
+        p_event_type: event.type || "adjustment",
+        p_description: event.description || "",
+        p_metadata: event.metadata || {},
+      }),
+    });
+    if (!Number.isInteger(balance)) throw new Error("invalid balance response");
+    return balance;
+  } catch (err) {
+    if (err.dbCode === "P0001" && err.message === "insufficient balance") {
+      err.code = "INSUFFICIENT_BALANCE";
+    }
     throw err;
   }
-  const updated = await supabaseRequest(`balances?user_id=eq.${userId}`, {
-    method: "PATCH",
-    headers: { Prefer: "return=representation" },
-    body: JSON.stringify({ balance: next }),
-  });
-  const balance = updated[0].balance;
-  await recordActivity(userId, {
-    ...event,
-    type: event.type || "adjustment",
-    delta,
-    balanceAfter: balance,
-  });
-  return balance;
 }
 function utcDateKey() {
   return new Date().toISOString().slice(0, 10);
@@ -155,12 +166,12 @@ app.post("/api/balance", async (req, res) => {
   try {
     const userId = extractUserId(req.body.initData);
     if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
-    const row = await getOrCreateUserRow(userId);
+    await getOrCreateUserRow(userId);
     const isOwner = isOwnerUser(userId);
 
     const sub = await getOrCreateSubscription(userId);
-    const bonusApplied = await maybeApplyDailyBonus(userId, sub);
-    const balance = bonusApplied > 0 ? await getOrCreateBalance(userId) : row.balance;
+    await maybeApplyDailyBonus(userId, sub);
+    const balance = await getOrCreateBalance(userId);
     const freeDaily = !tierConfig(sub) && !isOwner
       ? await getFreeDailyImageUsage(userId)
       : null;
@@ -442,21 +453,15 @@ function tierConfig(sub) {
 }
 
 async function maybeApplyDailyBonus(userId, sub) {
-  const cfg = tierConfig(sub);
-  if (!cfg) return 0;
-  const today = new Date().toISOString().slice(0, 10);
-  if (sub.last_bonus_date === today) return 0;
-
-  await adjustBalance(userId, cfg.dailyBonus, {
-    type: "reward",
-    description: "Subscription daily coins",
-    metadata: { source: "subscription_daily_bonus", tier: sub.tier },
+  const amount = await supabaseRequest("rpc/account_apply_daily_bonus", {
+    method: "POST",
+    body: JSON.stringify({
+      p_user_id: userId,
+      p_bonus_by_tier: Object.fromEntries(Object.entries(TIERS).map(([tier, cfg]) => [tier, cfg.dailyBonus])),
+    }),
   });
-  await supabaseRequest(`subscriptions?user_id=eq.${userId}`, {
-    method: "PATCH",
-    body: JSON.stringify({ last_bonus_date: today }),
-  });
-  return cfg.dailyBonus;
+  if (!Number.isInteger(amount) || amount < 0) throw new Error("invalid daily bonus response");
+  return amount;
 }
 
 app.post("/api/subscription/status", async (req, res) => {
@@ -571,7 +576,7 @@ app.post("/api/subscription/create-invoice", async (req, res) => {
     const priceTerms = isFirstPurchase
       ? `Первый месяц ${stars} ⭐, далее ручное продление ${cfg.renewStars} ⭐ за 30 дней.`
       : `Ручное продление на 30 дней — ${stars} ⭐.`;
-    const payload = JSON.stringify({ type: "subscription", tier, userId, ts: Date.now() });
+    const payload = JSON.stringify({ type: "subscription", tier, userId, stars, ts: Date.now() });
 
     const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/createInvoiceLink`, {
       method: "POST",
@@ -1221,7 +1226,7 @@ app.post("/api/create-invoice", async (req, res) => {
     const userId = extractUserId(initData);
     if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
 
-    const payload = JSON.stringify({ type: "balance", userId, amount, ts: Date.now() });
+    const payload = JSON.stringify({ type: "balance", userId, amount, stars, ts: Date.now() });
     const title = `${amount} $`;
 
     const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/createInvoiceLink`, {
@@ -1245,6 +1250,44 @@ app.post("/api/create-invoice", async (req, res) => {
   }
 });
 
+function parseInvoicePurchase(invoicePayload, currency, totalAmount, payerId) {
+  let payload;
+  try {
+    payload = JSON.parse(invoicePayload);
+  } catch {
+    return null;
+  }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)
+    || !Number.isSafeInteger(payload.userId) || payload.userId <= 0
+    || payload.userId !== payerId
+    || currency !== "XTR" || !Number.isSafeInteger(totalAmount)
+    || totalAmount <= 0 || totalAmount > 2147483647) return null;
+
+  if (payload.type === "subscription") {
+    if (typeof payload.tier !== "string" || !Object.prototype.hasOwnProperty.call(TIERS, payload.tier)) return null;
+    const cfg = TIERS[payload.tier];
+    if (payload.stars === undefined && ![cfg.firstStars, cfg.renewStars].includes(totalAmount)) return null;
+  } else if (payload.type === "balance") {
+    if (!Number.isSafeInteger(payload.amount) || payload.amount < MIN_AMOUNT || payload.amount > MAX_AMOUNT) return null;
+    if (payload.stars === undefined && totalAmount !== amountToStars(payload.amount)) return null;
+  } else {
+    return null;
+  }
+  // New invoices retain their quoted price. Older invoices use the current prices.
+  if (payload.stars !== undefined
+    && (!Number.isSafeInteger(payload.stars) || payload.stars !== totalAmount)) return null;
+  return payload;
+}
+
+function parseSuccessfulPayment(message) {
+  const payment = message?.successful_payment;
+  const payload = parseInvoicePurchase(payment?.invoice_payload, payment?.currency,
+    payment?.total_amount, message?.from?.id);
+  if (!payload || typeof payment?.telegram_payment_charge_id !== "string"
+    || !payment.telegram_payment_charge_id.trim()) return null;
+  return { payload, payment };
+}
+
 app.post("/telegram-webhook", async (req, res) => {
   if (!TELEGRAM_WEBHOOK_SECRET) {
     console.error("TELEGRAM_WEBHOOK_SECRET is not configured; rejecting webhook updates");
@@ -1260,43 +1303,60 @@ app.post("/telegram-webhook", async (req, res) => {
     const update = req.body;
 
     if (update.pre_checkout_query) {
-      await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerPreCheckoutQuery`, {
+      const query = update.pre_checkout_query;
+      if (typeof query.id !== "string" || !query.id) return res.sendStatus(200);
+      const payload = parseInvoicePurchase(query.invoice_payload, query.currency, query.total_amount, query.from?.id);
+      const answer = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerPreCheckoutQuery`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          pre_checkout_query_id: update.pre_checkout_query.id,
-          ok: true,
+          pre_checkout_query_id: query.id,
+          ok: !!payload,
+          ...(!payload ? { error_message: "Счёт недействителен. Откройте приложение и создайте новый счёт." } : {}),
         }),
       });
+      const answerResult = await answer.json();
+      if (!answer.ok || !answerResult.ok) return res.sendStatus(500);
     }
 
     if (update.message?.successful_payment) {
-      const payload = JSON.parse(update.message.successful_payment.invoice_payload);
+      const purchase = parseSuccessfulPayment(update.message);
+      if (!purchase) {
+        console.error("Ignoring invalid successful_payment update:", update.update_id);
+        return res.sendStatus(200);
+      }
+      const { payload, payment } = purchase;
+      let result;
+      try {
+        result = await supabaseRequest("rpc/account_apply_payment", {
+          method: "POST",
+          body: JSON.stringify({
+            p_user_id: payload.userId,
+            p_charge_id: payment.telegram_payment_charge_id,
+            p_payment_type: payload.type,
+            p_amount: payload.type === "balance" ? payload.amount : null,
+            p_tier: payload.type === "subscription" ? payload.tier : null,
+            p_stars: payment.total_amount,
+            p_duration_days: SUBSCRIPTION_DURATION_DAYS,
+          }),
+        });
+        if (!result || typeof result.applied !== "boolean" || !Number.isInteger(result.balance)) {
+          throw new Error("invalid payment processing response");
+        }
+      } catch (err) {
+        if (err.dbCode === "22023") {
+          console.error("Ignoring invalid payment details:", err.message);
+          return res.sendStatus(200);
+        }
+        console.error("Payment database processing failed:", err.message);
+        return res.sendStatus(500);
+      }
+
+      if (!result.applied) return res.sendStatus(200);
       try {
         if (payload.type === "subscription") {
-          const tier = Object.prototype.hasOwnProperty.call(TIERS, payload.tier) ? payload.tier : "standard";
-          const cfg = TIERS[tier];
-          const sub = await getOrCreateSubscription(payload.userId);
-          const sameTierStillActive = isSubActive(sub) && sub.tier === tier;
-          const base = sameTierStillActive && sub.expires_at ? new Date(sub.expires_at) : new Date();
-          const expiresAt = new Date(base.getTime() + SUBSCRIPTION_DURATION_DAYS * 24 * 60 * 60 * 1000);
-
-          await supabaseRequest(`subscriptions?user_id=eq.${payload.userId}`, {
-            method: "PATCH",
-            body: JSON.stringify({
-              active: true,
-              expires_at: expiresAt.toISOString(),
-              first_purchase_done: true,
-              tier,
-            }),
-          });
-
-          await recordActivity(payload.userId, {
-            type: "subscription",
-            delta: 0,
-            description: "Premium subscription",
-            metadata: { tier, stars: update.message.successful_payment.total_amount, expiresAt: expiresAt.toISOString() },
-          });
+          const cfg = TIERS[payload.tier];
+          const expiresAt = new Date(result.expiresAt);
           console.log(`✅ ${cfg.label} активирован: user ${payload.userId}, до ${expiresAt.toISOString()}`);
           await sendTelegramMessage(
             update.message.chat.id,
@@ -1305,11 +1365,7 @@ app.post("/telegram-webhook", async (req, res) => {
               `Продление вручную: ${cfg.renewStars} ⭐ за следующие 30 дней.`
           );
         } else {
-          const newBalance = await adjustBalance(payload.userId, payload.amount, {
-            type: "topup",
-            description: "Coins purchased with Telegram Stars",
-            metadata: { coins: payload.amount, stars: update.message.successful_payment.total_amount },
-          });
+          const newBalance = result.balance;
           console.log(`✅ Оплата зачислена: user ${payload.userId}, +${payload.amount} $ → баланс ${newBalance}`);
           await sendTelegramMessage(
             update.message.chat.id,
@@ -1317,8 +1373,9 @@ app.post("/telegram-webhook", async (req, res) => {
           );
         }
       } catch (err) {
-        console.error("Ошибка зачисления оплаты:", err.message);
+        console.error("Payment committed; Telegram notification failed:", err.message);
       }
+      return res.sendStatus(200);
     }
 
     if (update.message?.text && !update.message.successful_payment) {
@@ -1328,7 +1385,7 @@ app.post("/telegram-webhook", async (req, res) => {
     res.sendStatus(200);
   } catch (err) {
     console.error("Webhook error:", err);
-    res.sendStatus(200);
+    res.sendStatus(req.body?.pre_checkout_query || req.body?.message?.successful_payment ? 500 : 200);
   }
 });
 
@@ -1478,16 +1535,24 @@ async function handleChatMessage(message) {
     const cfg = tierConfig(sub);
     const CHAT_GEN_COUNT = 4;
     const costPerImage = cfg ? GEN_COST_PER_IMAGE - cfg.discountPerImage : GEN_COST_PER_IMAGE;
-    const cost = CHAT_GEN_COUNT * costPerImage;
+    const limitedFreeUser = !cfg && !isOwnerUser(fromId);
+    const reservedSlots = limitedFreeUser ? await reserveFreeDailyImageSlots(fromId, CHAT_GEN_COUNT) : [];
+    const requestedImages = limitedFreeUser ? reservedSlots.length : CHAT_GEN_COUNT;
+    if (requestedImages === 0) {
+      await sendTelegramMessage(chatId, "На сегодня достигнут лимит: 4 стикера для бесплатного аккаунта. Лимит общий для бота и приложения и обновляется в 00:00 UTC.");
+      return;
+    }
+    const cost = requestedImages * costPerImage;
 
     let balanceAfterCharge;
     try {
       balanceAfterCharge = await adjustBalance(fromId, -cost, {
         type: "generation",
         description: "Sticker generation",
-        metadata: { count: CHAT_GEN_COUNT, source: "telegram_chat" },
+        metadata: { count: requestedImages, costPerImage, source: "telegram_chat" },
       });
     } catch (err) {
+      if (limitedFreeUser) await releaseFreeDailyImageSlots(fromId, reservedSlots);
       if (err.code === "INSUFFICIENT_BALANCE") {
         await sendTelegramMessage(
           chatId,
@@ -1499,30 +1564,45 @@ async function handleChatMessage(message) {
       throw err;
     }
 
-    await sendTelegramMessage(chatId, `Генерирую ${CHAT_GEN_COUNT} стикера по описанию «${description}»… это может занять около минуты ✨`);
-
-    const images = await generateStickerSet(description, CHAT_GEN_COUNT, undefined, { cfg });
-
-    if (images.length === 0) {
-      const refunded = await adjustBalance(fromId, cost, {
+    let images;
+    try {
+      await sendTelegramMessage(chatId, `Генерирую ${requestedImages} стикера по описанию «${description}»… это может занять около минуты ✨`);
+      images = await generateStickerSet(description, requestedImages, undefined, { cfg });
+    } catch (err) {
+      await adjustBalance(fromId, cost, {
         type: "refund",
         description: "Generation failed — coins refunded",
-        metadata: { count: CHAT_GEN_COUNT, source: "telegram_chat" },
+        metadata: { count: requestedImages, source: "telegram_chat" },
       });
-      await sendTelegramMessage(chatId, `Не получилось сгенерировать ни одной картинки — вернул ${cost} $ на баланс (сейчас ${refunded} $). Попробуй ещё раз.`);
+      if (limitedFreeUser) await releaseFreeDailyImageSlots(fromId, reservedSlots);
+      throw err;
+    }
+    if (limitedFreeUser && images.length < reservedSlots.length) {
+      await releaseFreeDailyImageSlots(fromId, reservedSlots.slice(images.length));
+    }
+    const refund = (requestedImages - images.length) * costPerImage;
+    if (refund > 0) {
+      balanceAfterCharge = await adjustBalance(fromId, refund, {
+        type: "refund",
+        description: "Uncreated stickers — coins refunded",
+        metadata: { count: requestedImages - images.length, source: "telegram_chat" },
+      });
+    }
+
+    if (images.length === 0) {
+      await sendTelegramMessage(chatId, `Не получилось сгенерировать ни одной картинки — вернул ${cost} $ на баланс (сейчас ${balanceAfterCharge} $). Попробуй ещё раз.`);
       return;
     }
 
+    lastGenerationByUser.set(fromId, { ids: images.map((i) => i.id), ts: Date.now() });
     for (const img of images) {
       const buf = generatedCache.get(img.id);
       if (buf) await sendTelegramPhoto(chatId, buf);
     }
 
-    lastGenerationByUser.set(fromId, { ids: images.map((i) => i.id), ts: Date.now() });
-
     await sendTelegramMessage(
       chatId,
-      `Готово! Списано ${cost} $ (осталось ${balanceAfterCharge} $).\n\n` +
+      `Готово! Списано ${images.length * costPerImage} $ (осталось ${balanceAfterCharge} $).\n\n` +
         `Чтобы сохранить всё это в стикерпак — напиши:\n/save Название пака`
     );
     return;
