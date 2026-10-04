@@ -525,69 +525,37 @@ app.post("/api/generate", async (req, res) => {
 
     const NUM_IMAGES = Math.min(Math.max(parseInt(count, 10) || 4, 1), maxImages);
     const limitedFreeUser = !premium && !isOwnerUser(userId);
-    const reservedSlots = limitedFreeUser
-      ? await reserveFreeDailyImageSlots(userId, NUM_IMAGES)
-      : [];
+    const reservedSlots = limitedFreeUser ? await reserveFreeDailyImageSlots(userId, NUM_IMAGES) : [];
     const requestedImages = limitedFreeUser ? reservedSlots.length : NUM_IMAGES;
     if (requestedImages === 0) {
       const usage = await getFreeDailyImageUsage(userId);
-      return res.status(429).json({
-        error: "daily free image limit reached",
-        code: "DAILY_FREE_LIMIT",
-        freeDaily: { ...usage, remaining: 0 },
-      });
+      return res.status(429).json({ error: "daily free image limit reached", code: "DAILY_FREE_LIMIT", freeDaily: { ...usage, remaining: 0 } });
     }
     const cost = requestedImages * costPerImage;
-
     let balanceAfterCharge;
     try {
       balanceAfterCharge = await adjustBalance(userId, -cost);
     } catch (err) {
       if (limitedFreeUser) await releaseFreeDailyImageSlots(userId, reservedSlots);
-      if (err.code === "INSUFFICIENT_BALANCE") {
-        return res.status(400).json({ error: "insufficient balance", code: "INSUFFICIENT_BALANCE" });
-      }
+      if (err.code === "INSUFFICIENT_BALANCE") return res.status(400).json({ error: "insufficient balance", code: "INSUFFICIENT_BALANCE" });
       throw err;
     }
-
     let images;
     try {
-      images = await generateStickerSet(
-        prompt,
-        requestedImages,
-        (id) => `${req.protocol}://${req.get("host")}/api/image/${id}`,
-        { cfg }
-      );
+      images = await generateStickerSet(prompt, requestedImages, (id) => `${req.protocol}://${req.get("host")}/api/image/${id}`, { cfg });
     } catch (err) {
       await adjustBalance(userId, cost);
       if (limitedFreeUser) await releaseFreeDailyImageSlots(userId, reservedSlots);
       throw err;
     }
-
-    if (limitedFreeUser && images.length < reservedSlots.length) {
-      await releaseFreeDailyImageSlots(userId, reservedSlots.slice(images.length));
-    }
-    if (images.length < requestedImages) {
-      balanceAfterCharge = await adjustBalance(userId, (requestedImages - images.length) * costPerImage);
-    }
-
+    if (limitedFreeUser && images.length < reservedSlots.length) await releaseFreeDailyImageSlots(userId, reservedSlots.slice(images.length));
+    if (images.length < requestedImages) balanceAfterCharge = await adjustBalance(userId, (requestedImages - images.length) * costPerImage);
     if (images.length === 0) {
       const usage = limitedFreeUser ? await getFreeDailyImageUsage(userId) : null;
-      return res.status(502).json({
-        error: "Не удалось сгенерировать ни одной картинки. Попробуй ещё раз.",
-        balance: balanceAfterCharge,
-        ...(usage ? { freeDaily: { ...usage, remaining: Math.max(0, usage.limit - usage.used) } } : {}),
-      });
+      return res.status(502).json({ error: "Не удалось сгенерировать ни одной картинки. Попробуй ещё раз.", balance: balanceAfterCharge, ...(usage ? { freeDaily: { ...usage, remaining: Math.max(0, usage.limit - usage.used) } } : {}) });
     }
-
     const freeDaily = limitedFreeUser ? await getFreeDailyImageUsage(userId) : null;
-    res.json({
-      images,
-      balance: balanceAfterCharge,
-      cost: images.length * costPerImage,
-      premium,
-      ...(freeDaily ? { freeDaily: { ...freeDaily, remaining: Math.max(0, freeDaily.limit - freeDaily.used) } } : {}),
-    });
+    res.json({ images, balance: balanceAfterCharge, cost: images.length * costPerImage, premium, ...(freeDaily ? { freeDaily: { ...freeDaily, remaining: Math.max(0, freeDaily.limit - freeDaily.used) } } : {}) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "internal error" });
