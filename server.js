@@ -15,7 +15,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 const GEN_COST_PER_IMAGE = 5;
 const DEFAULT_BALANCE = 15;
-const FREE_DAILY_IMAGE_LIMIT = 4;
+const FREE_DAILY_IMAGE_LIMIT = 4;\nconst CHANNEL_TASK_CHAT = process.env.CHANNEL_TASK_CHAT || "@Lordeuso";\nconst CHANNEL_TASK_REWARD = 10;\nconst CHANNEL_TASK_CLAIM_CODE = "__task_channel_lordeuso";
 
 if (!BOT_TOKEN) console.warn("⚠️  BOT_TOKEN не задан — добавление в стикерпак не будет работать");
 if (!SUPABASE_URL || !SUPABASE_KEY) console.warn("⚠️  SUPABASE_URL/SUPABASE_KEY не заданы — баланс работать не будет");
@@ -189,6 +189,85 @@ app.post("/api/history", async (req, res) => {
   } catch (err) {
     console.error("Activity history fetch error:", err.message);
     res.status(500).json({ error: "could not load history" });
+  }
+});
+
+async function hasChannelTaskClaim(userId) {
+  const rows = await supabaseRequest(
+    `promo_redemptions?user_id=eq.${userId}&code=eq.${encodeURIComponent(CHANNEL_TASK_CLAIM_CODE)}&select=code&limit=1`
+  );
+  return !!rows?.length;
+}
+
+async function verifyChannelTaskMembership(userId) {
+  if (!BOT_TOKEN) throw new Error("Telegram bot is not configured");
+  const query = new URLSearchParams({ chat_id: CHANNEL_TASK_CHAT, user_id: String(userId) });
+  const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getChatMember?${query.toString()}`);
+  const payload = await response.json();
+  if (!response.ok || !payload?.ok || !payload.result?.user || Number(payload.result.user.id) !== Number(userId)) {
+    throw new Error("Telegram membership check unavailable");
+  }
+  const member = payload.result;
+  return member.status === "creator" || member.status === "administrator" || member.status === "member" ||
+    (member.status === "restricted" && member.is_member === true);
+}
+
+app.post("/api/tasks/channel/status", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "invalid Telegram Web App data" });
+    const claimed = await hasChannelTaskClaim(userId);
+    if (claimed) return res.json({ claimed: true, joined: null, reward: CHANNEL_TASK_REWARD });
+    const joined = await verifyChannelTaskMembership(userId);
+    res.json({ claimed: false, joined, reward: CHANNEL_TASK_REWARD });
+  } catch (err) {
+    console.error("Channel task status check failed:", err.message);
+    res.status(503).json({ error: "membership verification unavailable", code: "CHANNEL_CHECK_UNAVAILABLE" });
+  }
+});
+
+app.post("/api/tasks/channel/claim", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "invalid Telegram Web App data" });
+    if (await hasChannelTaskClaim(userId)) {
+      return res.status(409).json({ error: "reward already claimed", code: "TASK_ALREADY_CLAIMED" });
+    }
+    if (!(await verifyChannelTaskMembership(userId))) {
+      return res.status(403).json({ error: "join the channel first", code: "CHANNEL_NOT_JOINED" });
+    }
+
+    // The existing unique (user_id, code) key makes the reward claim one-time and race-safe.
+    const claim = await supabaseRequest("promo_redemptions?on_conflict=user_id,code", {
+      method: "POST",
+      headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
+      body: JSON.stringify({ user_id: userId, code: CHANNEL_TASK_CLAIM_CODE }),
+    });
+    if (!claim?.length) {
+      return res.status(409).json({ error: "reward already claimed", code: "TASK_ALREADY_CLAIMED" });
+    }
+
+    try {
+      const balance = await adjustBalance(userId, CHANNEL_TASK_REWARD, {
+        type: "reward",
+        description: "Channel subscription task",
+        metadata: { source: "channel_task", channel: CHANNEL_TASK_CHAT },
+      });
+      return res.json({ ok: true, balance, reward: CHANNEL_TASK_REWARD });
+    } catch (err) {
+      await supabaseRequest(
+        `promo_redemptions?user_id=eq.${userId}&code=eq.${encodeURIComponent(CHANNEL_TASK_CLAIM_CODE)}`,
+        { method: "DELETE" }
+      );
+      throw err;
+    }
+  } catch (err) {
+    if (err.message === "Telegram membership check unavailable" || err.message === "Telegram bot is not configured") {
+      console.error("Channel task claim verification failed:", err.message);
+      return res.status(503).json({ error: "membership verification unavailable", code: "CHANNEL_CHECK_UNAVAILABLE" });
+    }
+    console.error("Channel task claim failed:", err.message);
+    return res.status(500).json({ error: "could not grant task reward" });
   }
 });
 
