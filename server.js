@@ -15,7 +15,10 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 const GEN_COST_PER_IMAGE = 5;
 const DEFAULT_BALANCE = 15;
-const FREE_DAILY_IMAGE_LIMIT = 4;\nconst CHANNEL_TASK_CHAT = process.env.CHANNEL_TASK_CHAT || "@Lordeuso";\nconst CHANNEL_TASK_REWARD = 10;\nconst CHANNEL_TASK_CLAIM_CODE = "__task_channel_lordeuso";
+const FREE_DAILY_IMAGE_LIMIT = 4;
+const CHANNEL_TASK_CHAT = process.env.CHANNEL_TASK_CHAT || "@Lordeuso";
+const CHANNEL_TASK_REWARD = 10;
+const CHANNEL_TASK_CLAIM_CODE = "__task_channel_lordeuso";
 
 if (!BOT_TOKEN) console.warn("⚠️  BOT_TOKEN не задан — добавление в стикерпак не будет работать");
 if (!SUPABASE_URL || !SUPABASE_KEY) console.warn("⚠️  SUPABASE_URL/SUPABASE_KEY не заданы — баланс работать не будет");
