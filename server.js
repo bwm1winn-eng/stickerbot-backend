@@ -420,7 +420,7 @@ const TIERS = {
 
 async function getOrCreateSubscription(userId) {
   const rows = await supabaseRequest(
-    `subscriptions?user_id=eq.${userId}&select=user_id,active,expires_at,first_purchase_done,last_bonus_date,tier`
+    `subscriptions?user_id=eq.${userId}&select=user_id,active,expires_at,first_purchase_done,last_bonus_date,tier,last_coin_purchase_at`
   );
   if (rows && rows.length > 0) return rows[0];
 
@@ -438,7 +438,7 @@ async function getOrCreateSubscription(userId) {
   if (created?.length) return created[0];
 
   const existing = await supabaseRequest(
-    `subscriptions?user_id=eq.${userId}&select=user_id,active,expires_at,first_purchase_done,last_bonus_date,tier`
+    `subscriptions?user_id=eq.${userId}&select=user_id,active,expires_at,first_purchase_done,last_bonus_date,tier,last_coin_purchase_at`
   );
   return existing[0];
 }
@@ -492,6 +492,12 @@ app.post("/api/subscription/status", async (req, res) => {
             dailyBonus: cfg.dailyBonus,
           }
         : null,
+      coinPurchase: {
+        prices: { standard: 580, luxury: 1580, ultimate: 7000 },
+        nextAvailableAt: sub.last_coin_purchase_at
+          ? await supabaseRequest('rpc/account_coin_subscription_next_date', { method: 'POST', body: JSON.stringify({ p_last_purchase: sub.last_coin_purchase_at }) })
+          : null,
+      },
       bonusApplied,
       ...(balance !== undefined ? { balance } : {}),
     });
@@ -555,6 +561,22 @@ app.post("/api/help/ask", async (req, res) => {
   } catch (err) {
     console.error("Mini App AI help error:", err.message);
     res.status(502).json({ error: "AI help is temporarily unavailable" });
+  }
+});
+
+app.post("/api/subscription/buy-coins", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
+    if (!Object.prototype.hasOwnProperty.call(TIERS, req.body.tier)) return res.status(400).json({ error: "unknown subscription tier" });
+    const result = await supabaseRequest("rpc/account_buy_coin_subscription", {
+      method: "POST", body: JSON.stringify({ p_user_id: userId, p_tier: req.body.tier }),
+    });
+    if (!result || typeof result.applied !== "boolean") throw new Error("invalid coin purchase response");
+    res.status(result.applied ? 200 : result.code === "INSUFFICIENT_BALANCE" ? 400 : 409).json(result);
+  } catch (err) {
+    console.error("Coin subscription error:", err.message);
+    res.status(500).json({ error: "internal error" });
   }
 });
 
@@ -1716,3 +1738,4 @@ app.listen(PORT, async () => {
     console.error("Telegram webhook registration failed:", error.message);
   }
 });
+
