@@ -540,6 +540,7 @@ app.post("/api/help/ask", async (req, res) => {
     "You are the concise, friendly help assistant for Sticker Bot, a Telegram sticker-creation mini app.",
     "Answer only questions about using the app, generating stickers, sticker packs, balance, and the visible subscription terms.",
     "Do not claim you changed a user's account or payment. Never ask for passwords, bot tokens, or secret keys.",
+    "Premium can also be purchased with coins: Standard 580, Luxury 1580, Ultimate 7000, for 30 days. One coin purchase per account every three calendar months across all tiers; Stars purchases have no such cooldown. Coin prices use the regular Stars renewal price times 8 coins per Star times 2.5, without an introductory discount.",
     `Reply in ${language}, in at most 5 short sentences. If unsure, say so and suggest the in-app tutorial or contacting the bot owner.`,
     `User question: ${question}`,
   ].join("\n\n");
@@ -1447,6 +1448,7 @@ Standard (19⭐ первый месяц, затем 29⭐) даёт 4 $ за к�
 Luxury (52⭐ первый месяц, затем 79⭐) даёт 3 $ за картинку, до 10 картинок за раз и +8 $ в день;
 Ultimate (229⭐ первый месяц, затем 350⭐) даёт 2 $ за картинку, до 12 картинок за раз,
 +35 $ в день, максимальный приоритет и эксклюзивный стиль стикеров. Подписки вручную продлеваются раз в 30 дней.
+Подписки также можно купить за монеты в приложении: Standard 580, Luxury 1580, Ultimate 7000 на 30 дней. Покупка за монеты доступна раз в три календарных месяца на аккаунт для всех тарифов вместе; ограничение не относится к Stars.
 После сохранения стикеры сразу появляются в личном списке стикерпаков в
 Telegram: их можно найти через встроенный поиск стикеров в любом чате (иконка стикеров в поле ввода
 сообщения → раздел "Мои наборы"), а управлять своими сохранёнными наборами можно через официального
