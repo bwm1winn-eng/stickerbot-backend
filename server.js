@@ -420,7 +420,7 @@ const TIERS = {
 
 async function getOrCreateSubscription(userId) {
   const rows = await supabaseRequest(
-    `subscriptions?user_id=eq.${userId}&select=user_id,active,expires_at,first_purchase_done,last_bonus_date,tier`
+    `subscriptions?user_id=eq.${userId}&select=user_id,active,expires_at,first_purchase_done,last_bonus_date,tier,last_coin_purchase_at`
   );
   if (rows && rows.length > 0) return rows[0];
 
@@ -438,7 +438,7 @@ async function getOrCreateSubscription(userId) {
   if (created?.length) return created[0];
 
   const existing = await supabaseRequest(
-    `subscriptions?user_id=eq.${userId}&select=user_id,active,expires_at,first_purchase_done,last_bonus_date,tier`
+    `subscriptions?user_id=eq.${userId}&select=user_id,active,expires_at,first_purchase_done,last_bonus_date,tier,last_coin_purchase_at`
   );
   return existing[0];
 }
@@ -492,6 +492,12 @@ app.post("/api/subscription/status", async (req, res) => {
             dailyBonus: cfg.dailyBonus,
           }
         : null,
+      coinPurchase: {
+        prices: { standard: 580, luxury: 1580, ultimate: 7000 },
+        nextAvailableAt: sub.last_coin_purchase_at
+          ? await supabaseRequest('rpc/account_coin_subscription_next_date', { method: 'POST', body: JSON.stringify({ p_last_purchase: sub.last_coin_purchase_at }) })
+          : null,
+      },
       bonusApplied,
       ...(balance !== undefined ? { balance } : {}),
     });
@@ -534,6 +540,7 @@ app.post("/api/help/ask", async (req, res) => {
     "You are the concise, friendly help assistant for Sticker Bot, a Telegram sticker-creation mini app.",
     "Answer only questions about using the app, generating stickers, sticker packs, balance, and the visible subscription terms.",
     "Do not claim you changed a user's account or payment. Never ask for passwords, bot tokens, or secret keys.",
+    "Premium can also be purchased with coins: Standard 580, Luxury 1580, Ultimate 7000, for 30 days. One coin purchase per account every three calendar months across all tiers; Stars purchases have no such cooldown. Coin prices use the regular Stars renewal price times 8 coins per Star times 2.5, without an introductory discount.",
     `Reply in ${language}, in at most 5 short sentences. If unsure, say so and suggest the in-app tutorial or contacting the bot owner.`,
     `User question: ${question}`,
   ].join("\n\n");
@@ -555,6 +562,22 @@ app.post("/api/help/ask", async (req, res) => {
   } catch (err) {
     console.error("Mini App AI help error:", err.message);
     res.status(502).json({ error: "AI help is temporarily unavailable" });
+  }
+});
+
+app.post("/api/subscription/buy-coins", async (req, res) => {
+  try {
+    const userId = extractUserId(req.body.initData);
+    if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
+    if (!Object.prototype.hasOwnProperty.call(TIERS, req.body.tier)) return res.status(400).json({ error: "unknown subscription tier" });
+    const result = await supabaseRequest("rpc/account_buy_coin_subscription", {
+      method: "POST", body: JSON.stringify({ p_user_id: userId, p_tier: req.body.tier }),
+    });
+    if (!result || typeof result.applied !== "boolean") throw new Error("invalid coin purchase response");
+    res.status(result.applied ? 200 : result.code === "INSUFFICIENT_BALANCE" ? 400 : 409).json(result);
+  } catch (err) {
+    console.error("Coin subscription error:", err.message);
+    res.status(500).json({ error: "internal error" });
   }
 });
 
@@ -1425,6 +1448,7 @@ Standard (19⭐ первый месяц, затем 29⭐) даёт 4 $ за к�
 Luxury (52⭐ первый месяц, затем 79⭐) даёт 3 $ за картинку, до 10 картинок за раз и +8 $ в день;
 Ultimate (229⭐ первый месяц, затем 350⭐) даёт 2 $ за картинку, до 12 картинок за раз,
 +35 $ в день, максимальный приоритет и эксклюзивный стиль стикеров. Подписки вручную продлеваются раз в 30 дней.
+Подписки также можно купить за монеты в приложении: Standard 580, Luxury 1580, Ultimate 7000 на 30 дней. Покупка за монеты доступна раз в три календарных месяца на аккаунт для всех тарифов вместе; ограничение не относится к Stars.
 После сохранения стикеры сразу появляются в личном списке стикерпаков в
 Telegram: их можно найти через встроенный поиск стикеров в любом чате (иконка стикеров в поле ввода
 сообщения → раздел "Мои наборы"), а управлять своими сохранёнными наборами можно через официального
@@ -1716,3 +1740,4 @@ app.listen(PORT, async () => {
     console.error("Telegram webhook registration failed:", error.message);
   }
 });
+
