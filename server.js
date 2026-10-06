@@ -382,14 +382,14 @@ const LUXURY_PROMPT_SUFFIX =
 const STANDARD_PROMPT_SUFFIX =
   ", clean crisp sticker finish, soft shading, polished look";
 
-// Introductory prices are about 35% below renewal. Daily credits are fixed
-// benefits, separate from the 8 credits per Star top-up rate. They do not
-// guarantee a profit margin because provider costs and net Stars vary.
+// Prices round upward after the requested increase: Standard +10%,
+// Luxury/Ultimate +25%. Only Standard retains a daily coin benefit.
+// Provider costs and net Stars receipts determine the actual profit margin.
 const TIERS = {
   standard: {
     label: "Standard",
-    firstStars: 19,
-    renewStars: 29,
+    firstStars: 21,
+    renewStars: 32,
     discountPerImage: 1,
     maxImages: 6,
     dailyBonus: 3,
@@ -398,25 +398,50 @@ const TIERS = {
   },
   luxury: {
     label: "Luxury",
-    firstStars: 52,
-    renewStars: 79,
+    firstStars: 65,
+    renewStars: 99,
     discountPerImage: 2,
     maxImages: 10,
-    dailyBonus: 5,
+    dailyBonus: 0,
     generationPauseMs: 0,
     promptSuffix: LUXURY_PROMPT_SUFFIX,
   },
   ultimate: {
     label: "Ultimate",
-    firstStars: 229,
-    renewStars: 350,
+    firstStars: 287,
+    renewStars: 438,
     discountPerImage: 3,
     maxImages: 12,
-    dailyBonus: 12,
+    dailyBonus: 0,
     generationPauseMs: 0,
     promptSuffix: ", exclusive Ultimate sticker art, vivid jewel-tone colors, cinematic rim lighting, crisp die-cut outline, premium collectible finish",
   },
 };
+
+function subscriptionCoinPrices() {
+  return Object.fromEntries(Object.entries(TIERS).map(([tier, cfg]) => [tier, cfg.renewStars * 8 * 2.5]));
+}
+
+const STICKER_ART_STYLES = {
+  vector: "cute cartoon vector style, thick outline, simple flat colors",
+  clay3d: "3D clay render look, sculpted rounded forms, tactile clay material, soft studio lighting, dimensional shading",
+  paper: "layered paper-cut illustration, textured cut-paper shapes, subtle layered shadows",
+  anime: "anime illustration, expressive character design, clean cel shading, crisp linework",
+};
+const EMOTION_VARIANTS = [
+  { key: "happy", description: "happy, smiling expression" },
+  { key: "sad", description: "sad, teary-eyed expression" },
+  { key: "wow", description: "surprised, wide-eyed wow expression" },
+  { key: "love", description: "loving expression, small floating hearts" },
+  { key: "angry", description: "angry, furrowed-brow expression" },
+  { key: "wink", description: "playful winking expression" },
+];
+
+function studioBenefitsText(tier) {
+  if (tier === "ultimate") return "Темы Gold Atelier и Aurora Studio, 3D-look и другие стили, набор из 6 эмоций одним запуском.";
+  if (tier === "luxury") return "Тема Gold Atelier, 3D-look и другие стили генерации.";
+  return "";
+}
 
 async function getOrCreateSubscription(userId) {
   const rows = await supabaseRequest(
@@ -493,7 +518,7 @@ app.post("/api/subscription/status", async (req, res) => {
           }
         : null,
       coinPurchase: {
-        prices: { standard: 580, luxury: 1580, ultimate: 7000 },
+        prices: subscriptionCoinPrices(),
         nextAvailableAt: sub.last_coin_purchase_at
           ? await supabaseRequest('rpc/account_coin_subscription_next_date', { method: 'POST', body: JSON.stringify({ p_last_purchase: sub.last_coin_purchase_at }) })
           : null,
@@ -540,10 +565,10 @@ app.post("/api/help/ask", async (req, res) => {
     "You are the concise, friendly help assistant for Sticker Bot, a Telegram sticker-creation mini app.",
     "Answer only questions about using the app, generating stickers, sticker packs, balance, and the visible subscription terms.",
     "Do not claim you changed a user's account or payment. Never ask for passwords, bot tokens, or secret keys.",
-    `Current 30-day subscription terms: ${Object.entries(TIERS).map(([tier, cfg]) => `${cfg.label}: first month ${cfg.firstStars} Stars, manual renewal ${cfg.renewStars} Stars, ${GEN_COST_PER_IMAGE - cfg.discountPerImage} balance credits per image, up to ${cfg.maxImages} images per batch, ${cfg.dailyBonus} daily balance credits`).join("; ")}.`,
-    "Luxury adds the Gold Atelier interface theme, up to 8 saved generation recipes, and favorite packs. Ultimate includes these benefits with up to 24 recipes, the Aurora Studio interface theme, and an art/mood prompt builder.",
-    "Studio works in the mini app. Recipes and favorites are stored on this device/browser, do not sync between devices, and may be lost if browser storage is cleared. Recipes save ideas and batch sizes. The art/mood builder composes editable prompt text; it does not automatically generate images or add AI capability.",
-    "Premium can also be purchased with coins: Standard 580, Luxury 1580, Ultimate 7000, for 30 days. One coin purchase per account every three calendar months across all tiers; Stars purchases have no such cooldown. Coin prices use the regular Stars renewal price times 8 coins per Star times 2.5, without an introductory discount.",
+    `Current 30-day subscription terms: ${Object.entries(TIERS).map(([tier, cfg]) => `${cfg.label}: first month ${cfg.firstStars} Stars, manual renewal ${cfg.renewStars} Stars, ${GEN_COST_PER_IMAGE - cfg.discountPerImage} balance credits per image, up to ${cfg.maxImages} images per batch${cfg.dailyBonus > 0 ? `, ${cfg.dailyBonus} daily balance credits` : ", no daily coin bonus"}`).join("; ")}.`,
+    "Luxury adds the Gold Atelier interface theme and server-supported vector, clay 3D-look, paper-cut, and anime generation styles. Ultimate includes these features, the Aurora Studio interface theme, and an emotion-set shortcut: one idea generates up to six static stickers with happy, sad, wow, love, angry, and wink expressions in one request. This costs 12 coins for six successful stickers; failed images are refunded as usual.",
+    "Styles control the image-generation prompt. A 3D-look sticker is a static raster illustration, not a 3D model or animated sticker. The emotion-set uses six normal image generations and cannot guarantee identical character details across independently generated images. Saved recipes and favorite-pack controls are no longer part of the interface.",
+    `Premium can also be purchased with coins: ${Object.entries(subscriptionCoinPrices()).map(([tier, amount]) => `${TIERS[tier].label} ${amount}`).join(", ")}, for 30 days. One coin purchase per account every three calendar months across all tiers; Stars purchases have no such cooldown. Coin prices use the regular Stars renewal price times 8 coins per Star times 2.5, without an introductory discount.`,
     `Reply in ${language}, in at most 5 short sentences. If unsure, say so and suggest the in-app tutorial or contacting the bot owner.`,
     `User question: ${question}`,
   ].join("\n\n");
@@ -572,9 +597,13 @@ app.post("/api/subscription/buy-coins", async (req, res) => {
   try {
     const userId = extractUserId(req.body.initData);
     if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
-    if (!Object.prototype.hasOwnProperty.call(TIERS, req.body.tier)) return res.status(400).json({ error: "unknown subscription tier" });
-    const result = await supabaseRequest("rpc/account_buy_coin_subscription", {
-      method: "POST", body: JSON.stringify({ p_user_id: userId, p_tier: req.body.tier }),
+    if (typeof req.body.tier !== "string" || !Object.prototype.hasOwnProperty.call(TIERS, req.body.tier)) return res.status(400).json({ error: "unknown subscription tier" });
+    const cost = subscriptionCoinPrices()[req.body.tier];
+    if (!Number.isSafeInteger(req.body.expectedPrice) || req.body.expectedPrice !== cost) {
+      return res.status(409).json({ applied: false, code: "COIN_SUBSCRIPTION_PRICE_CHANGED", cost, quoteRequired: true });
+    }
+    const result = await supabaseRequest("rpc/account_buy_coin_subscription_v2", {
+      method: "POST", body: JSON.stringify({ p_user_id: userId, p_tier: req.body.tier, p_expected_price: req.body.expectedPrice }),
     });
     if (!result || typeof result.applied !== "boolean") throw new Error("invalid coin purchase response");
     res.status(result.applied ? 200 : result.code === "INSUFFICIENT_BALANCE" ? 400 : 409).json(result);
@@ -590,7 +619,7 @@ app.post("/api/subscription/create-invoice", async (req, res) => {
     if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
 
     const tier = req.body.tier;
-    if (!Object.prototype.hasOwnProperty.call(TIERS, tier)) {
+    if (typeof tier !== "string" || !Object.prototype.hasOwnProperty.call(TIERS, tier)) {
       return res.status(400).json({ error: "unknown subscription tier" });
     }
     const cfg = TIERS[tier];
@@ -609,7 +638,7 @@ app.post("/api/subscription/create-invoice", async (req, res) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title,
-        description: `${cfg.label}: ${priceTerms} Приоритет генерации, ${GEN_COST_PER_IMAGE - cfg.discountPerImage} $ за картинку, до ${cfg.maxImages} картинок за раз, +${cfg.dailyBonus} $ в день.`,
+        description: `${cfg.label}: ${priceTerms} ${GEN_COST_PER_IMAGE - cfg.discountPerImage} монеты за картинку, до ${cfg.maxImages} картинок за раз.${cfg.dailyBonus > 0 ? ` +${cfg.dailyBonus} монеты в день.` : ""} ${studioBenefitsText(tier)}`,
         payload,
         currency: "XTR",
         prices: [{ label: title, amount: stars }],
@@ -674,7 +703,7 @@ app.post("/api/promo/redeem", async (req, res) => {
 app.post("/api/generate", async (req, res) => {
   try {
     const { prompt, count, initData } = req.body;
-    if (!prompt || !prompt.trim()) {
+    if (typeof prompt !== "string" || !prompt.trim()) {
       return res.status(400).json({ error: "prompt is required" });
     }
 
@@ -686,6 +715,24 @@ app.post("/api/generate", async (req, res) => {
     const premium = !!cfg;
     const maxImages = cfg ? cfg.maxImages : 4;
     const costPerImage = cfg ? GEN_COST_PER_IMAGE - cfg.discountPerImage : GEN_COST_PER_IMAGE;
+
+    const style = req.body.style ?? "vector";
+    if (typeof style !== "string" || !Object.prototype.hasOwnProperty.call(STICKER_ART_STYLES, style)) {
+      return res.status(400).json({ error: "unknown sticker style", code: "INVALID_STYLE" });
+    }
+    if (style !== "vector" && cfg !== TIERS.luxury && cfg !== TIERS.ultimate) {
+      return res.status(403).json({ error: "this sticker style requires Luxury or Ultimate", code: "STYLE_TIER_REQUIRED" });
+    }
+    const preset = req.body.preset ?? "none";
+    if (preset !== "none" && preset !== "emotions") {
+      return res.status(400).json({ error: "unknown generation preset", code: "INVALID_PRESET" });
+    }
+    if (preset === "emotions" && cfg !== TIERS.ultimate) {
+      return res.status(403).json({ error: "emotion sets require Ultimate", code: "PRESET_TIER_REQUIRED" });
+    }
+    if (preset === "emotions" && Number(count) !== EMOTION_VARIANTS.length) {
+      return res.status(400).json({ error: "emotion sets require exactly six images", code: "INVALID_PRESET_COUNT" });
+    }
 
     const NUM_IMAGES = Math.min(Math.max(parseInt(count, 10) || 4, 1), maxImages);
     const limitedFreeUser = !premium && !isOwnerUser(userId);
@@ -701,7 +748,7 @@ app.post("/api/generate", async (req, res) => {
       balanceAfterCharge = await adjustBalance(userId, -cost, {
         type: "generation",
         description: "Sticker generation",
-        metadata: { count: requestedImages, costPerImage },
+        metadata: { count: requestedImages, costPerImage, style, preset },
       });
     } catch (err) {
       if (limitedFreeUser) await releaseFreeDailyImageSlots(userId, reservedSlots);
@@ -710,7 +757,7 @@ app.post("/api/generate", async (req, res) => {
     }
     let images;
     try {
-      images = await generateStickerSet(prompt, requestedImages, (id) => `${req.protocol}://${req.get("host")}/api/image/${id}`, { cfg });
+      images = await generateStickerSet(prompt, requestedImages, (id) => `${req.protocol}://${req.get("host")}/api/image/${id}`, { cfg, style, preset });
     } catch (err) {
       await adjustBalance(userId, cost, {
         type: "refund",
@@ -739,17 +786,21 @@ app.post("/api/generate", async (req, res) => {
 });
 
 async function generateStickerSet(prompt, numImages, urlBuilder, options = {}) {
-  const { cfg = null } = options;
+  const { cfg = null, style = "vector", preset = "none" } = options;
   const stickerPrompt =
-    `sticker, ${prompt.trim()}, cute cartoon vector style, thick outline, ` +
-    `simple flat colors, white background, centered, high contrast` +
+    `sticker, ${prompt.trim()}, ${STICKER_ART_STYLES[style]}, ` +
+    `white background, centered, high contrast` +
     (cfg ? cfg.promptSuffix : "");
 
   const images = [];
 
   for (let i = 0; i < numImages; i++) {
     try {
-      const buffer = await generateOneImage(stickerPrompt);
+      const emotion = preset === "emotions" ? EMOTION_VARIANTS[i] : null;
+      const imagePrompt = emotion
+        ? `${stickerPrompt}, one recurring character matching the same original idea, ${emotion.description}`
+        : stickerPrompt;
+      const buffer = await generateOneImage(imagePrompt);
       const processed = await processToSticker(buffer);
       const id = `${Date.now()}_${i}`;
       generatedCache.set(id, processed);
@@ -757,6 +808,7 @@ async function generateStickerSet(prompt, numImages, urlBuilder, options = {}) {
         id,
         url: urlBuilder ? urlBuilder(id) : undefined,
         animated: false,
+        ...(emotion ? { emotion: emotion.key } : {}),
       });
     } catch (err) {
       console.error(`Ошибка генерации картинки #${i}:`, err.message);
@@ -1387,7 +1439,8 @@ app.post("/telegram-webhook", async (req, res) => {
           await sendTelegramMessage(
             update.message.chat.id,
             `🔴 ${cfg.label} активирован! Действует до ${expiresAt.toLocaleDateString("ru-RU")}.\n` +
-              `Плюшки: ${GEN_COST_PER_IMAGE - cfg.discountPerImage} $/картинка, до ${cfg.maxImages} за раз, +${cfg.dailyBonus} $ в день.\n` +
+              `Возможности: ${GEN_COST_PER_IMAGE - cfg.discountPerImage} монеты/картинка, до ${cfg.maxImages} за раз.${cfg.dailyBonus > 0 ? ` +${cfg.dailyBonus} монеты в день.` : ""}\n` +
+              (studioBenefitsText(payload.tier) ? `${studioBenefitsText(payload.tier)}\n` : "") +
               `Продление вручную: ${cfg.renewStars} ⭐ за следующие 30 дней.`
           );
         } else {
@@ -1431,13 +1484,14 @@ const WELCOME_TEXT =
 const HELP_COMMANDS_TEXT =
   "📋 <b>Все команды</b>\n\n" +
   "🎨 <b>Создание стикеров</b>\n" +
-  "<code>/create описание</code> — сгенерировать 4 стикера (20 $)\n" +
+  "<code>/create описание</code> — до 4 стикеров (5 монет за картинку без подписки, с подпиской дешевле)\n" +
   "<code>/save название пака</code> — сохранить последнюю генерацию\n\n" +
   "💰 <b>Баланс</b>\n" +
   "У новых — 15 $ бесплатно. Не хватает? Купи $ за Telegram Stars в приложении, либо спроси про промокод.\n\n" +
   "🔴 <b>Premium (Standard / Luxury / Ultimate)</b>\n" +
-  "Приоритет генерации, скидки, бонусы на баланс и больше картинок за раз. Первый месяц: Standard 19⭐, Luxury 52⭐, Ultimate 229⭐; продление вручную: 29⭐, 79⭐ и 350⭐ соответственно. Ежедневный бонус: Standard +3 монеты, Luxury +5, Ultimate +12. Кнопка Premium — в приложении.\n" +
-  "Luxury: тема Gold Atelier, до 8 шаблонов генерации и избранные наборы. Ultimate: эти возможности, до 24 шаблонов, тема Aurora Studio и конструктор описания по стилю и настроению. Шаблоны и избранное сохраняются на этом устройстве.\n\n" +
+  "Скидки на генерацию и больше картинок за раз. Первый месяц: Standard 21⭐, Luxury 65⭐, Ultimate 287⭐; продление вручную: 32⭐, 99⭐ и 438⭐ соответственно. Standard: +3 монеты в день. Luxury и Ultimate — без ежедневных бонусов. Кнопка Premium — в приложении.\n" +
+  "Luxury: тема Gold Atelier и быстрый выбор стиля — вектор, 3D-look, бумага, аниме. Ultimate: эти возможности, тема Aurora Studio и 6 эмоций одного персонажа за один запуск (12 монет за 6 успешно созданных стикеров). 3D-look — статичная иллюстрация с объёмным видом.\n\n" +
+  "Покупка на 30 дней за монеты: Standard 640, Luxury 1980, Ultimate 8760. Доступна раз в три календарных месяца на аккаунт.\n\n" +
   "🔍 <b>Где сохранённые стикеры</b>\n" +
   "Иконка стикеров в поле ввода сообщения → «Мои наборы». Управлять паками (переименовать, удалить) — через официального бота @Stickers.\n\n" +
   "❓Любой другой вопрос — просто напиши текстом, отвечу.";
@@ -1448,19 +1502,19 @@ const SYSTEM_CONTEXT = `Ты — дружелюбный помощник Telegra
 2) прямо в чате с ботом текстовыми командами: "/create описание" генерирует 4 картинки, а
 "/save название пака" сохраняет их как стикерпак. Стоимость генерации — 5 $ за картинку по умолчанию.
 Новым пользователям выдаётся 15 $ бесплатно. Есть три уровня Premium-подписки через Telegram Stars:
-Standard (19⭐ первый месяц, затем 29⭐) даёт 4 $ за картинку, до 6 картинок за раз и +3 $ в день;
-Luxury (52⭐ первый месяц, затем 79⭐) даёт 3 $ за картинку, до 10 картинок за раз и +5 $ в день;
-Ultimate (229⭐ первый месяц, затем 350⭐) даёт 2 $ за картинку, до 12 картинок за раз,
-+12 $ в день, максимальный приоритет и эксклюзивный стиль стикеров. Подписки вручную продлеваются раз в 30 дней.
-В мини-приложении Luxury даёт тему Gold Atelier, до 8 шаблонов генерации и избранные наборы.
-Ultimate включает эти возможности, до 24 шаблонов, тему Aurora Studio и конструктор описания по стилю и настроению.
-Шаблон сохраняет идею и количество стикеров. Шаблоны и избранное хранятся на текущем устройстве/в браузере, не синхронизируются и могут исчезнуть при очистке данных. Темы меняют интерфейс. Конструктор составляет редактируемый текст и не запускает генерацию автоматически.
-Подписки также можно купить за монеты в приложении: Standard 580, Luxury 1580, Ultimate 7000 на 30 дней. Покупка за монеты доступна раз в три календарных месяца на аккаунт для всех тарифов вместе; ограничение не относится к Stars.
+Standard (21⭐ первый месяц, затем 32⭐) даёт 4 монеты за картинку, до 6 картинок за раз и +3 монеты в день;
+Luxury (65⭐ первый месяц, затем 99⭐) даёт 3 монеты за картинку и до 10 картинок за раз;
+Ultimate (287⭐ первый месяц, затем 438⭐) даёт 2 монеты за картинку и до 12 картинок за раз.
+У Luxury и Ultimate ежедневных монетных бонусов нет. Подписки вручную продлеваются раз в 30 дней.
+В мини-приложении Luxury даёт тему Gold Atelier и быстрый выбор стиля генерации: вектор, 3D-look (объёмная глиняная иллюстрация), бумага и аниме.
+Ultimate включает эти возможности, тему Aurora Studio и набор из 6 эмоций: радость, грусть, удивление, любовь, злость, подмигивание. Пользователь вводит одну идею и включает этот режим перед генерацией. Цена — 12 монет за 6 успешных стикеров; за несозданные картинки монеты возвращаются.
+3D-look создаёт статичную иллюстрацию, не 3D-модель и не анимированный стикер. Независимые генерации не гарантируют полное совпадение деталей персонажа. Темы меняют интерфейс. Сохранённые шаблоны и избранные наборы убраны из интерфейса.
+Подписки также можно купить за монеты в приложении: Standard 640, Luxury 1980, Ultimate 8760 на 30 дней. Покупка за монеты доступна раз в три календарных месяца на аккаунт для всех тарифов вместе; ограничение не относится к Stars.
 После сохранения стикеры сразу появляются в личном списке стикерпаков в
 Telegram: их можно найти через встроенный поиск стикеров в любом чате (иконка стикеров в поле ввода
 сообщения → раздел "Мои наборы"), а управлять своими сохранёнными наборами можно через официального
-Telegram-бота @Stickers. Если генерация не удалась — можно просто попробовать ещё раз, это бесплатный
-сервис и иногда он перегружен. Отвечай кратко, по-дружески, на языке вопроса пользователя (русский
+Telegram-бота @Stickers. Если генерация не удалась — монеты за несозданные картинки возвращаются,
+можно попробовать ещё раз: сервис иногда перегружен. Отвечай кратко, по-дружески, на языке вопроса пользователя (русский
 или английский). Если вопрос не связан с ботом и стикерами — вежливо верни разговор к теме бота.`;
 
 async function handleChatMessage(message) {
