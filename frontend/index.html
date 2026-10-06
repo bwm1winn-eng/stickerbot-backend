@@ -1630,6 +1630,10 @@
     catch(e) { showToast(studioText()[6]); }
   }
   function renderStudio() {
+    if(premiumState.active && premiumState.expiresAt && new Date(premiumState.expiresAt).getTime()<=Date.now()){
+      premiumState.active=false;
+      queueMicrotask(()=>renderPremiumBadge());
+    }
     initializeStudio();
     const t=studioText(), unlocked=premiumStudioAccess(), ultimate=premiumStudioAccess(true);
     const accessState=unlocked+':'+ultimate;
