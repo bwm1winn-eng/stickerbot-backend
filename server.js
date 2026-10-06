@@ -213,17 +213,111 @@ async function hasChannelTaskClaim(userId) {
   return !!rows?.length;
 }
 
-async function verifyChannelTaskMembership(userId) {
-  if (!BOT_TOKEN) throw new Error("Telegram bot is not configured");
-  const query = new URLSearchParams({ chat_id: CHANNEL_TASK_CHAT, user_id: String(userId) });
-  const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getChatMember?${query.toString()}`);
-  const payload = await response.json();
-  if (!response.ok || !payload?.ok || !payload.result?.user || Number(payload.result.user.id) !== Number(userId)) {
-    throw new Error("Telegram membership check unavailable");
+let channelTaskAdminVerifiedUntil = 0;
+let channelTaskAdminCheck = null;
+const channelTaskMembershipChecks = new Map();
+
+function channelTaskError(code, reason, retryAfter = 3) {
+  const error = new Error(reason);
+  error.code = code;
+  error.retryAfter = Math.min(60, Math.max(1, Number(retryAfter) || 3));
+  return error;
+}
+
+// Error messages remain fixed, so fetch failures can never log a bot-token URL.
+async function channelTaskTelegramRequest(method, params, deadline) {
+  if (!BOT_TOKEN) throw channelTaskError("CHANNEL_TASK_CONFIGURATION", "Telegram bot is not configured");
+  const query = new URLSearchParams(params);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw channelTaskError("CHANNEL_CHECK_UNAVAILABLE", "Telegram membership check timed out");
+    let response;
+    let payload;
+    try {
+      response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}?${query.toString()}`, {
+        signal: AbortSignal.timeout(Math.min(4000, remaining)),
+      });
+      payload = await response.json();
+    } catch {
+      if (attempt === 0 && deadline - Date.now() > 500) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        continue;
+      }
+      throw channelTaskError("CHANNEL_CHECK_UNAVAILABLE", "Telegram membership network request failed");
+    }
+    if (response.ok && payload?.ok && payload.result) return payload.result;
+    const status = Number(payload?.error_code) || response.status;
+    const description = typeof payload?.description === "string" ? payload.description.toLowerCase() : "";
+    if (status === 401 || status === 403 ||
+      (status === 400 && /chat not found|member list is inaccessible|chat_admin_required|not enough rights|bot.*not.*member/.test(description))) {
+      throw channelTaskError("CHANNEL_TASK_CONFIGURATION", "Channel task requires a valid channel and bot administrator access");
+    }
+    const retryAfter = Math.min(60, Math.max(1, Number(payload?.parameters?.retry_after) || 3));
+    const wait = status === 429 ? retryAfter * 1000 : 300;
+    if ((status === 429 || status >= 500) && attempt === 0 && wait <= 1000 && deadline - Date.now() > wait) {
+      await new Promise((resolve) => setTimeout(resolve, wait));
+      continue;
+    }
+    throw channelTaskError("CHANNEL_CHECK_UNAVAILABLE", status === 429 ? "Telegram membership check rate limited" : "Telegram membership check unavailable", retryAfter);
   }
-  const member = payload.result;
-  return member.status === "creator" || member.status === "administrator" || member.status === "member" ||
-    (member.status === "restricted" && member.is_member === true);
+  throw channelTaskError("CHANNEL_CHECK_UNAVAILABLE", "Telegram membership check unavailable");
+}
+
+async function ensureChannelTaskAdmin(deadline) {
+  if (CHANNEL_TASK_CHAT.toLowerCase() !== "@lordeuso") {
+    throw channelTaskError("CHANNEL_TASK_CONFIGURATION", "Channel task reward is configured for a different channel");
+  }
+  if (channelTaskAdminVerifiedUntil > Date.now()) return;
+  if (!channelTaskAdminCheck) {
+    channelTaskAdminCheck = (async () => {
+      const bot = await channelTaskTelegramRequest("getMe", {}, deadline);
+      if (!bot.is_bot || !Number.isSafeInteger(bot.id)) {
+        throw channelTaskError("CHANNEL_TASK_CONFIGURATION", "Telegram bot identity is invalid");
+      }
+      const membership = await channelTaskTelegramRequest("getChatMember", { chat_id: CHANNEL_TASK_CHAT, user_id: String(bot.id) }, deadline);
+      if (membership?.user?.id !== bot.id || !["creator", "administrator"].includes(membership.status)) {
+        throw channelTaskError("CHANNEL_TASK_CONFIGURATION", "Bot administrator access is required for channel tasks");
+      }
+      channelTaskAdminVerifiedUntil = Date.now() + 60_000;
+    })();
+  }
+  const currentCheck = channelTaskAdminCheck;
+  try { await currentCheck; } finally {
+    if (channelTaskAdminCheck === currentCheck) channelTaskAdminCheck = null;
+  }
+}
+
+async function verifyChannelTaskMembership(userId, { retryNotJoined = false } = {}) {
+  const key = `${userId}:${retryNotJoined ? "claim" : "status"}`;
+  if (channelTaskMembershipChecks.has(key)) return channelTaskMembershipChecks.get(key);
+  const check = (async () => {
+    const deadline = Date.now() + 10_000;
+    await ensureChannelTaskAdmin(deadline);
+    for (let attempt = 0; attempt < (retryNotJoined ? 2 : 1); attempt++) {
+      const member = await channelTaskTelegramRequest("getChatMember", { chat_id: CHANNEL_TASK_CHAT, user_id: String(userId) }, deadline);
+      if (!member?.user || member.user.id !== Number(userId)) {
+        throw channelTaskError("CHANNEL_CHECK_UNAVAILABLE", "Telegram membership response identity mismatch");
+      }
+      if (["creator", "administrator", "member"].includes(member.status) ||
+        (member.status === "restricted" && member.is_member === true)) return true;
+      if (!["left", "kicked", "restricted"].includes(member.status) ||
+        (member.status === "restricted" && typeof member.is_member !== "boolean")) {
+        throw channelTaskError("CHANNEL_CHECK_UNAVAILABLE", "Telegram membership response status is unknown");
+      }
+      if (!retryNotJoined || attempt > 0) return false;
+      // A just-completed channel join can take a moment to become visible.
+      await new Promise((resolve) => setTimeout(resolve, 700));
+    }
+    return false;
+  })();
+  channelTaskMembershipChecks.set(key, check);
+  try { return await check; } finally { channelTaskMembershipChecks.delete(key); }
+}
+
+function sendChannelTaskCheckError(res, error) {
+  const code = error.code === "CHANNEL_TASK_CONFIGURATION" ? "CHANNEL_TASK_CONFIGURATION" : "CHANNEL_CHECK_UNAVAILABLE";
+  console.error("Channel task verification failed:", code, error.message);
+  return res.status(503).json({ error: "membership verification unavailable", code, retryAfter: error.retryAfter || 3 });
 }
 
 app.post("/api/tasks/channel/status", async (req, res) => {
@@ -235,8 +329,7 @@ app.post("/api/tasks/channel/status", async (req, res) => {
     const joined = await verifyChannelTaskMembership(userId);
     res.json({ claimed: false, joined, reward: CHANNEL_TASK_REWARD });
   } catch (err) {
-    console.error("Channel task status check failed:", err.message);
-    res.status(503).json({ error: "membership verification unavailable", code: "CHANNEL_CHECK_UNAVAILABLE" });
+    sendChannelTaskCheckError(res, err);
   }
 });
 
@@ -247,38 +340,31 @@ app.post("/api/tasks/channel/claim", async (req, res) => {
     if (await hasChannelTaskClaim(userId)) {
       return res.status(409).json({ error: "reward already claimed", code: "TASK_ALREADY_CLAIMED" });
     }
-    if (!(await verifyChannelTaskMembership(userId))) {
+    if (!(await verifyChannelTaskMembership(userId, { retryNotJoined: true }))) {
       return res.status(403).json({ error: "join the channel first", code: "CHANNEL_NOT_JOINED" });
     }
 
-    // The existing unique (user_id, code) key makes the reward claim one-time and race-safe.
-    const claim = await supabaseRequest("promo_redemptions?on_conflict=user_id,code", {
+    // Claim, credit, and ledger entry commit together. Never DELETE a claim after
+    // an ambiguous network failure: the database may already have credited it.
+    const result = await supabaseRequest("rpc/account_claim_channel_task", {
       method: "POST",
-      headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
-      body: JSON.stringify({ user_id: userId, code: CHANNEL_TASK_CLAIM_CODE }),
+      body: JSON.stringify({ p_user_id: userId }),
     });
-    if (!claim?.length) {
-      return res.status(409).json({ error: "reward already claimed", code: "TASK_ALREADY_CLAIMED" });
+    if (result?.code === "TASK_REWARD_EXHAUSTED") {
+      return res.status(409).json({ error: "channel task reward is no longer available", code: "TASK_REWARD_EXHAUSTED" });
     }
-
-    try {
-      const balance = await adjustBalance(userId, CHANNEL_TASK_REWARD, {
-        type: "reward",
-        description: "Channel subscription task",
-        metadata: { source: "channel_task", channel: CHANNEL_TASK_CHAT },
-      });
-      return res.json({ ok: true, balance, reward: CHANNEL_TASK_REWARD });
-    } catch (err) {
-      await supabaseRequest(
-        `promo_redemptions?user_id=eq.${userId}&code=eq.${encodeURIComponent(CHANNEL_TASK_CLAIM_CODE)}`,
-        { method: "DELETE" }
-      );
-      throw err;
+    if (result?.code === "TASK_REWARD_UNAVAILABLE") {
+      throw channelTaskError("CHANNEL_TASK_CONFIGURATION", "Channel task reward configuration is unavailable");
     }
+    if (!result || typeof result.applied !== "boolean" || typeof result.alreadyClaimed !== "boolean" ||
+      !result.claimed || !Number.isInteger(result.balance) || result.reward !== CHANNEL_TASK_REWARD ||
+      (!result.applied && !result.alreadyClaimed)) {
+      throw new Error("invalid channel task reward response");
+    }
+    return res.json({ ok: true, balance: result.balance, reward: result.reward, alreadyClaimed: result.alreadyClaimed });
   } catch (err) {
-    if (err.message === "Telegram membership check unavailable" || err.message === "Telegram bot is not configured") {
-      console.error("Channel task claim verification failed:", err.message);
-      return res.status(503).json({ error: "membership verification unavailable", code: "CHANNEL_CHECK_UNAVAILABLE" });
+    if (["CHANNEL_CHECK_UNAVAILABLE", "CHANNEL_TASK_CONFIGURATION"].includes(err.code)) {
+      return sendChannelTaskCheckError(res, err);
     }
     console.error("Channel task claim failed:", err.message);
     return res.status(500).json({ error: "could not grant task reward" });
@@ -382,14 +468,14 @@ const LUXURY_PROMPT_SUFFIX =
 const STANDARD_PROMPT_SUFFIX =
   ", clean crisp sticker finish, soft shading, polished look";
 
-// Introductory prices are about 35% below renewal. Daily credits are fixed
-// benefits, separate from the 8 credits per Star top-up rate. They do not
-// guarantee a profit margin because provider costs and net Stars vary.
+// Prices round upward after the requested increase: Standard +10%,
+// Luxury/Ultimate +25%. Only Standard retains a daily coin benefit.
+// Provider costs and net Stars receipts determine the actual profit margin.
 const TIERS = {
   standard: {
     label: "Standard",
-    firstStars: 19,
-    renewStars: 29,
+    firstStars: 21,
+    renewStars: 32,
     discountPerImage: 1,
     maxImages: 6,
     dailyBonus: 3,
@@ -398,25 +484,50 @@ const TIERS = {
   },
   luxury: {
     label: "Luxury",
-    firstStars: 52,
-    renewStars: 79,
+    firstStars: 65,
+    renewStars: 99,
     discountPerImage: 2,
     maxImages: 10,
-    dailyBonus: 5,
+    dailyBonus: 0,
     generationPauseMs: 0,
     promptSuffix: LUXURY_PROMPT_SUFFIX,
   },
   ultimate: {
     label: "Ultimate",
-    firstStars: 229,
-    renewStars: 350,
+    firstStars: 287,
+    renewStars: 438,
     discountPerImage: 3,
     maxImages: 12,
-    dailyBonus: 12,
+    dailyBonus: 0,
     generationPauseMs: 0,
     promptSuffix: ", exclusive Ultimate sticker art, vivid jewel-tone colors, cinematic rim lighting, crisp die-cut outline, premium collectible finish",
   },
 };
+
+function subscriptionCoinPrices() {
+  return Object.fromEntries(Object.entries(TIERS).map(([tier, cfg]) => [tier, cfg.renewStars * 8 * 2.5]));
+}
+
+const STICKER_ART_STYLES = {
+  vector: "cute cartoon vector style, thick outline, simple flat colors",
+  clay3d: "3D clay render look, sculpted rounded forms, tactile clay material, soft studio lighting, dimensional shading",
+  paper: "layered paper-cut illustration, textured cut-paper shapes, subtle layered shadows",
+  anime: "anime illustration, expressive character design, clean cel shading, crisp linework",
+};
+const EMOTION_VARIANTS = [
+  { key: "happy", description: "happy, smiling expression" },
+  { key: "sad", description: "sad, teary-eyed expression" },
+  { key: "wow", description: "surprised, wide-eyed wow expression" },
+  { key: "love", description: "loving expression, small floating hearts" },
+  { key: "angry", description: "angry, furrowed-brow expression" },
+  { key: "wink", description: "playful winking expression" },
+];
+
+function studioBenefitsText(tier) {
+  if (tier === "ultimate") return "Темы Gold Atelier и Aurora Studio, 3D-look и другие стили, набор из 6 эмоций одним запуском.";
+  if (tier === "luxury") return "Тема Gold Atelier, 3D-look и другие стили генерации.";
+  return "";
+}
 
 async function getOrCreateSubscription(userId) {
   const rows = await supabaseRequest(
@@ -493,7 +604,7 @@ app.post("/api/subscription/status", async (req, res) => {
           }
         : null,
       coinPurchase: {
-        prices: { standard: 580, luxury: 1580, ultimate: 7000 },
+        prices: subscriptionCoinPrices(),
         nextAvailableAt: sub.last_coin_purchase_at
           ? await supabaseRequest('rpc/account_coin_subscription_next_date', { method: 'POST', body: JSON.stringify({ p_last_purchase: sub.last_coin_purchase_at }) })
           : null,
@@ -540,10 +651,10 @@ app.post("/api/help/ask", async (req, res) => {
     "You are the concise, friendly help assistant for Sticker Bot, a Telegram sticker-creation mini app.",
     "Answer only questions about using the app, generating stickers, sticker packs, balance, and the visible subscription terms.",
     "Do not claim you changed a user's account or payment. Never ask for passwords, bot tokens, or secret keys.",
-    `Current 30-day subscription terms: ${Object.entries(TIERS).map(([tier, cfg]) => `${cfg.label}: first month ${cfg.firstStars} Stars, manual renewal ${cfg.renewStars} Stars, ${GEN_COST_PER_IMAGE - cfg.discountPerImage} balance credits per image, up to ${cfg.maxImages} images per batch, ${cfg.dailyBonus} daily balance credits`).join("; ")}.`,
-    "Luxury adds the Gold Atelier interface theme, up to 8 saved generation recipes, and favorite packs. Ultimate includes these benefits with up to 24 recipes, the Aurora Studio interface theme, and an art/mood prompt builder.",
-    "Studio works in the mini app. Recipes and favorites are stored on this device/browser, do not sync between devices, and may be lost if browser storage is cleared. Recipes save ideas and batch sizes. The art/mood builder composes editable prompt text; it does not automatically generate images or add AI capability.",
-    "Premium can also be purchased with coins: Standard 580, Luxury 1580, Ultimate 7000, for 30 days. One coin purchase per account every three calendar months across all tiers; Stars purchases have no such cooldown. Coin prices use the regular Stars renewal price times 8 coins per Star times 2.5, without an introductory discount.",
+    `Current 30-day subscription terms: ${Object.entries(TIERS).map(([tier, cfg]) => `${cfg.label}: first month ${cfg.firstStars} Stars, manual renewal ${cfg.renewStars} Stars, ${GEN_COST_PER_IMAGE - cfg.discountPerImage} balance credits per image, up to ${cfg.maxImages} images per batch${cfg.dailyBonus > 0 ? `, ${cfg.dailyBonus} daily balance credits` : ", no daily coin bonus"}`).join("; ")}.`,
+    "Luxury adds the Gold Atelier interface theme and server-supported vector, clay 3D-look, paper-cut, and anime generation styles. Ultimate includes these features, the Aurora Studio interface theme, and an emotion-set shortcut: one idea generates up to six static stickers with happy, sad, wow, love, angry, and wink expressions in one request. This costs 12 coins for six successful stickers; failed images are refunded as usual.",
+    "Styles control the image-generation prompt. A 3D-look sticker is a static raster illustration, not a 3D model or animated sticker. The emotion-set uses six normal image generations and cannot guarantee identical character details across independently generated images. Saved recipes and favorite-pack controls are no longer part of the interface.",
+    `Premium can also be purchased with coins: ${Object.entries(subscriptionCoinPrices()).map(([tier, amount]) => `${TIERS[tier].label} ${amount}`).join(", ")}, for 30 days. One coin purchase per account every three calendar months across all tiers; Stars purchases have no such cooldown. Coin prices use the regular Stars renewal price times 8 coins per Star times 2.5, without an introductory discount.`,
     `Reply in ${language}, in at most 5 short sentences. If unsure, say so and suggest the in-app tutorial or contacting the bot owner.`,
     `User question: ${question}`,
   ].join("\n\n");
@@ -572,9 +683,13 @@ app.post("/api/subscription/buy-coins", async (req, res) => {
   try {
     const userId = extractUserId(req.body.initData);
     if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
-    if (!Object.prototype.hasOwnProperty.call(TIERS, req.body.tier)) return res.status(400).json({ error: "unknown subscription tier" });
-    const result = await supabaseRequest("rpc/account_buy_coin_subscription", {
-      method: "POST", body: JSON.stringify({ p_user_id: userId, p_tier: req.body.tier }),
+    if (typeof req.body.tier !== "string" || !Object.prototype.hasOwnProperty.call(TIERS, req.body.tier)) return res.status(400).json({ error: "unknown subscription tier" });
+    const cost = subscriptionCoinPrices()[req.body.tier];
+    if (!Number.isSafeInteger(req.body.expectedPrice) || req.body.expectedPrice !== cost) {
+      return res.status(409).json({ applied: false, code: "COIN_SUBSCRIPTION_PRICE_CHANGED", cost, quoteRequired: true });
+    }
+    const result = await supabaseRequest("rpc/account_buy_coin_subscription_v2", {
+      method: "POST", body: JSON.stringify({ p_user_id: userId, p_tier: req.body.tier, p_expected_price: req.body.expectedPrice }),
     });
     if (!result || typeof result.applied !== "boolean") throw new Error("invalid coin purchase response");
     res.status(result.applied ? 200 : result.code === "INSUFFICIENT_BALANCE" ? 400 : 409).json(result);
@@ -590,7 +705,7 @@ app.post("/api/subscription/create-invoice", async (req, res) => {
     if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
 
     const tier = req.body.tier;
-    if (!Object.prototype.hasOwnProperty.call(TIERS, tier)) {
+    if (typeof tier !== "string" || !Object.prototype.hasOwnProperty.call(TIERS, tier)) {
       return res.status(400).json({ error: "unknown subscription tier" });
     }
     const cfg = TIERS[tier];
@@ -609,7 +724,7 @@ app.post("/api/subscription/create-invoice", async (req, res) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title,
-        description: `${cfg.label}: ${priceTerms} Приоритет генерации, ${GEN_COST_PER_IMAGE - cfg.discountPerImage} $ за картинку, до ${cfg.maxImages} картинок за раз, +${cfg.dailyBonus} $ в день.`,
+        description: `${cfg.label}: ${priceTerms} ${GEN_COST_PER_IMAGE - cfg.discountPerImage} монеты за картинку, до ${cfg.maxImages} картинок за раз.${cfg.dailyBonus > 0 ? ` +${cfg.dailyBonus} монеты в день.` : ""} ${studioBenefitsText(tier)}`,
         payload,
         currency: "XTR",
         prices: [{ label: title, amount: stars }],
@@ -632,6 +747,7 @@ app.post("/api/promo/redeem", async (req, res) => {
 
     const code = String(req.body.code || "").trim().toUpperCase();
     if (!code) return res.status(400).json({ error: "code is required" });
+    if (code.startsWith("__")) return res.status(400).json({ error: "invalid promo code", code: "INVALID_PROMO_CODE" });
 
     const codes = await supabaseRequest(`promo_codes?code=eq.${encodeURIComponent(code)}&select=*`);
     if (!codes || codes.length === 0) {
@@ -674,7 +790,7 @@ app.post("/api/promo/redeem", async (req, res) => {
 app.post("/api/generate", async (req, res) => {
   try {
     const { prompt, count, initData } = req.body;
-    if (!prompt || !prompt.trim()) {
+    if (typeof prompt !== "string" || !prompt.trim()) {
       return res.status(400).json({ error: "prompt is required" });
     }
 
@@ -686,6 +802,24 @@ app.post("/api/generate", async (req, res) => {
     const premium = !!cfg;
     const maxImages = cfg ? cfg.maxImages : 4;
     const costPerImage = cfg ? GEN_COST_PER_IMAGE - cfg.discountPerImage : GEN_COST_PER_IMAGE;
+
+    const style = req.body.style ?? "vector";
+    if (typeof style !== "string" || !Object.prototype.hasOwnProperty.call(STICKER_ART_STYLES, style)) {
+      return res.status(400).json({ error: "unknown sticker style", code: "INVALID_STYLE" });
+    }
+    if (style !== "vector" && cfg !== TIERS.luxury && cfg !== TIERS.ultimate) {
+      return res.status(403).json({ error: "this sticker style requires Luxury or Ultimate", code: "STYLE_TIER_REQUIRED" });
+    }
+    const preset = req.body.preset ?? "none";
+    if (preset !== "none" && preset !== "emotions") {
+      return res.status(400).json({ error: "unknown generation preset", code: "INVALID_PRESET" });
+    }
+    if (preset === "emotions" && cfg !== TIERS.ultimate) {
+      return res.status(403).json({ error: "emotion sets require Ultimate", code: "PRESET_TIER_REQUIRED" });
+    }
+    if (preset === "emotions" && Number(count) !== EMOTION_VARIANTS.length) {
+      return res.status(400).json({ error: "emotion sets require exactly six images", code: "INVALID_PRESET_COUNT" });
+    }
 
     const NUM_IMAGES = Math.min(Math.max(parseInt(count, 10) || 4, 1), maxImages);
     const limitedFreeUser = !premium && !isOwnerUser(userId);
@@ -701,7 +835,7 @@ app.post("/api/generate", async (req, res) => {
       balanceAfterCharge = await adjustBalance(userId, -cost, {
         type: "generation",
         description: "Sticker generation",
-        metadata: { count: requestedImages, costPerImage },
+        metadata: { count: requestedImages, costPerImage, style, preset },
       });
     } catch (err) {
       if (limitedFreeUser) await releaseFreeDailyImageSlots(userId, reservedSlots);
@@ -710,7 +844,7 @@ app.post("/api/generate", async (req, res) => {
     }
     let images;
     try {
-      images = await generateStickerSet(prompt, requestedImages, (id) => `${req.protocol}://${req.get("host")}/api/image/${id}`, { cfg });
+      images = await generateStickerSet(prompt, requestedImages, (id) => `${req.protocol}://${req.get("host")}/api/image/${id}`, { cfg, style, preset });
     } catch (err) {
       await adjustBalance(userId, cost, {
         type: "refund",
@@ -739,17 +873,21 @@ app.post("/api/generate", async (req, res) => {
 });
 
 async function generateStickerSet(prompt, numImages, urlBuilder, options = {}) {
-  const { cfg = null } = options;
+  const { cfg = null, style = "vector", preset = "none" } = options;
   const stickerPrompt =
-    `sticker, ${prompt.trim()}, cute cartoon vector style, thick outline, ` +
-    `simple flat colors, white background, centered, high contrast` +
+    `sticker, ${prompt.trim()}, ${STICKER_ART_STYLES[style]}, ` +
+    `white background, centered, high contrast` +
     (cfg ? cfg.promptSuffix : "");
 
   const images = [];
 
   for (let i = 0; i < numImages; i++) {
     try {
-      const buffer = await generateOneImage(stickerPrompt);
+      const emotion = preset === "emotions" ? EMOTION_VARIANTS[i] : null;
+      const imagePrompt = emotion
+        ? `${stickerPrompt}, one recurring character matching the same original idea, ${emotion.description}`
+        : stickerPrompt;
+      const buffer = await generateOneImage(imagePrompt);
       const processed = await processToSticker(buffer);
       const id = `${Date.now()}_${i}`;
       generatedCache.set(id, processed);
@@ -757,6 +895,7 @@ async function generateStickerSet(prompt, numImages, urlBuilder, options = {}) {
         id,
         url: urlBuilder ? urlBuilder(id) : undefined,
         animated: false,
+        ...(emotion ? { emotion: emotion.key } : {}),
       });
     } catch (err) {
       console.error(`Ошибка генерации картинки #${i}:`, err.message);
@@ -1048,50 +1187,82 @@ async function buildStickerPack(userId, packName, ids) {
 }
 
 async function generateOneImage(prompt) {
+  const deadline = Date.now() + 45_000;
   if (process.env.POLLINATIONS_KEY) {
     try {
-      return await generateViaPaidEndpoint(prompt);
+      return await generateViaPaidEndpoint(prompt, deadline);
     } catch (err) {
-      console.warn(`Платный способ не сработал (${err.message}), переключаюсь на бесплатный`);
+      console.warn("Paid image provider unavailable; trying fallback:", err.code || "IMAGE_PROVIDER_UNAVAILABLE");
     }
   }
-  return generateViaFreeEndpoint(prompt);
+  return generateViaFreeEndpoint(prompt, 1, 0, deadline);
 }
 
-async function generateViaPaidEndpoint(prompt) {
+function imageProviderError(status = 0) {
+  const error = new Error(status ? `Sticker image provider returned HTTP ${status}` : "Sticker image provider request failed or timed out");
+  error.code = status === 402 ? "IMAGE_PROVIDER_PAYMENT_REQUIRED" : "IMAGE_PROVIDER_UNAVAILABLE";
+  return error;
+}
+
+async function requestImageProvider(url, deadline) {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) throw imageProviderError();
+  try {
+    return await fetch(url, { signal: AbortSignal.timeout(Math.min(45_000, remaining)) });
+  } catch {
+    // node-fetch errors may contain the full URL, including the prompt and key.
+    throw imageProviderError();
+  }
+}
+
+async function imageProviderBuffer(response) {
+  try {
+    const arrayBuffer = await response.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  } catch {
+    throw imageProviderError();
+  }
+}
+
+async function generateViaPaidEndpoint(prompt, deadline = Date.now() + 45_000) {
   const encodedPrompt = encodeURIComponent(prompt);
   const seed = Math.floor(Math.random() * 1000000);
-  const url = `https://gen.pollinations.ai/image/${encodedPrompt}?width=512&height=512&seed=${seed}&nologo=true&key=${process.env.POLLINATIONS_KEY}`;
+  const url = `https://gen.pollinations.ai/image/${encodedPrompt}?width=512&height=512&seed=${seed}&nologo=true&key=${encodeURIComponent(process.env.POLLINATIONS_KEY)}`;
 
-  const response = await fetch(url);
+  const response = await requestImageProvider(url, deadline);
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`paid endpoint ${response.status}: ${text.slice(0, 150)}`);
+    response.body?.destroy?.();
+    throw imageProviderError(response.status);
   }
-  const arrayBuffer = await response.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+  return imageProviderBuffer(response);
 }
 
-async function generateViaFreeEndpoint(prompt, retries = 3, attempt = 0) {
+async function generateViaFreeEndpoint(prompt, retries = 1, attempt = 0, deadline = Date.now() + 45_000) {
   const encodedPrompt = encodeURIComponent(prompt);
   const seed = Math.floor(Math.random() * 1000000);
   const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&seed=${seed}&nologo=true`;
 
-  const response = await fetch(url);
+  const response = await requestImageProvider(url, deadline);
+  if (!response.ok) response.body?.destroy?.();
 
-  if ((response.status === 429 || response.status === 402) && retries > 0) {
-    const wait = 12000 + attempt * 8000;
-    await new Promise((r) => setTimeout(r, wait));
-    return generateViaFreeEndpoint(prompt, retries - 1, attempt + 1);
+  if ((response.status === 429 || response.status >= 500) && retries > 0) {
+    const retryAfter = response.headers?.get("retry-after");
+    let wait = 1000;
+    if (retryAfter) {
+      const seconds = Number(retryAfter);
+      const dateWait = Date.parse(retryAfter) - Date.now();
+      wait = Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : Number.isFinite(dateWait) ? Math.max(0, dateWait) : 1000;
+    }
+    // Long rate-limit waits are returned as a failure/refund instead of tying up
+    // a batch; retries never occur earlier than the provider's Retry-After.
+    if (wait <= 5000 && deadline - Date.now() > wait + 1000) {
+      await new Promise((resolve) => setTimeout(resolve, wait));
+      return generateViaFreeEndpoint(prompt, retries - 1, attempt + 1, deadline);
+    }
   }
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Pollinations API error ${response.status}: ${text.slice(0, 200)}`);
-  }
-
-  const arrayBuffer = await response.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+  if (!response.ok) throw imageProviderError(response.status);
+  return imageProviderBuffer(response);
 }
 
 async function processToSticker(buffer) {
@@ -1387,7 +1558,8 @@ app.post("/telegram-webhook", async (req, res) => {
           await sendTelegramMessage(
             update.message.chat.id,
             `🔴 ${cfg.label} активирован! Действует до ${expiresAt.toLocaleDateString("ru-RU")}.\n` +
-              `Плюшки: ${GEN_COST_PER_IMAGE - cfg.discountPerImage} $/картинка, до ${cfg.maxImages} за раз, +${cfg.dailyBonus} $ в день.\n` +
+              `Возможности: ${GEN_COST_PER_IMAGE - cfg.discountPerImage} монеты/картинка, до ${cfg.maxImages} за раз.${cfg.dailyBonus > 0 ? ` +${cfg.dailyBonus} монеты в день.` : ""}\n` +
+              (studioBenefitsText(payload.tier) ? `${studioBenefitsText(payload.tier)}\n` : "") +
               `Продление вручную: ${cfg.renewStars} ⭐ за следующие 30 дней.`
           );
         } else {
@@ -1431,13 +1603,14 @@ const WELCOME_TEXT =
 const HELP_COMMANDS_TEXT =
   "📋 <b>Все команды</b>\n\n" +
   "🎨 <b>Создание стикеров</b>\n" +
-  "<code>/create описание</code> — сгенерировать 4 стикера (20 $)\n" +
+  "<code>/create описание</code> — до 4 стикеров (5 монет за картинку без подписки, с подпиской дешевле)\n" +
   "<code>/save название пака</code> — сохранить последнюю генерацию\n\n" +
   "💰 <b>Баланс</b>\n" +
   "У новых — 15 $ бесплатно. Не хватает? Купи $ за Telegram Stars в приложении, либо спроси про промокод.\n\n" +
   "🔴 <b>Premium (Standard / Luxury / Ultimate)</b>\n" +
-  "Приоритет генерации, скидки, бонусы на баланс и больше картинок за раз. Первый месяц: Standard 19⭐, Luxury 52⭐, Ultimate 229⭐; продление вручную: 29⭐, 79⭐ и 350⭐ соответственно. Ежедневный бонус: Standard +3 монеты, Luxury +5, Ultimate +12. Кнопка Premium — в приложении.\n" +
-  "Luxury: тема Gold Atelier, до 8 шаблонов генерации и избранные наборы. Ultimate: эти возможности, до 24 шаблонов, тема Aurora Studio и конструктор описания по стилю и настроению. Шаблоны и избранное сохраняются на этом устройстве.\n\n" +
+  "Скидки на генерацию и больше картинок за раз. Первый месяц: Standard 21⭐, Luxury 65⭐, Ultimate 287⭐; продление вручную: 32⭐, 99⭐ и 438⭐ соответственно. Standard: +3 монеты в день. Luxury и Ultimate — без ежедневных бонусов. Кнопка Premium — в приложении.\n" +
+  "Luxury: тема Gold Atelier и быстрый выбор стиля — вектор, 3D-look, бумага, аниме. Ultimate: эти возможности, тема Aurora Studio и 6 эмоций одного персонажа за один запуск (12 монет за 6 успешно созданных стикеров). 3D-look — статичная иллюстрация с объёмным видом.\n\n" +
+  "Покупка на 30 дней за монеты: Standard 640, Luxury 1980, Ultimate 8760. Доступна раз в три календарных месяца на аккаунт.\n\n" +
   "🔍 <b>Где сохранённые стикеры</b>\n" +
   "Иконка стикеров в поле ввода сообщения → «Мои наборы». Управлять паками (переименовать, удалить) — через официального бота @Stickers.\n\n" +
   "❓Любой другой вопрос — просто напиши текстом, отвечу.";
@@ -1448,19 +1621,19 @@ const SYSTEM_CONTEXT = `Ты — дружелюбный помощник Telegra
 2) прямо в чате с ботом текстовыми командами: "/create описание" генерирует 4 картинки, а
 "/save название пака" сохраняет их как стикерпак. Стоимость генерации — 5 $ за картинку по умолчанию.
 Новым пользователям выдаётся 15 $ бесплатно. Есть три уровня Premium-подписки через Telegram Stars:
-Standard (19⭐ первый месяц, затем 29⭐) даёт 4 $ за картинку, до 6 картинок за раз и +3 $ в день;
-Luxury (52⭐ первый месяц, затем 79⭐) даёт 3 $ за картинку, до 10 картинок за раз и +5 $ в день;
-Ultimate (229⭐ первый месяц, затем 350⭐) даёт 2 $ за картинку, до 12 картинок за раз,
-+12 $ в день, максимальный приоритет и эксклюзивный стиль стикеров. Подписки вручную продлеваются раз в 30 дней.
-В мини-приложении Luxury даёт тему Gold Atelier, до 8 шаблонов генерации и избранные наборы.
-Ultimate включает эти возможности, до 24 шаблонов, тему Aurora Studio и конструктор описания по стилю и настроению.
-Шаблон сохраняет идею и количество стикеров. Шаблоны и избранное хранятся на текущем устройстве/в браузере, не синхронизируются и могут исчезнуть при очистке данных. Темы меняют интерфейс. Конструктор составляет редактируемый текст и не запускает генерацию автоматически.
-Подписки также можно купить за монеты в приложении: Standard 580, Luxury 1580, Ultimate 7000 на 30 дней. Покупка за монеты доступна раз в три календарных месяца на аккаунт для всех тарифов вместе; ограничение не относится к Stars.
+Standard (21⭐ первый месяц, затем 32⭐) даёт 4 монеты за картинку, до 6 картинок за раз и +3 монеты в день;
+Luxury (65⭐ первый месяц, затем 99⭐) даёт 3 монеты за картинку и до 10 картинок за раз;
+Ultimate (287⭐ первый месяц, затем 438⭐) даёт 2 монеты за картинку и до 12 картинок за раз.
+У Luxury и Ultimate ежедневных монетных бонусов нет. Подписки вручную продлеваются раз в 30 дней.
+В мини-приложении Luxury даёт тему Gold Atelier и быстрый выбор стиля генерации: вектор, 3D-look (объёмная глиняная иллюстрация), бумага и аниме.
+Ultimate включает эти возможности, тему Aurora Studio и набор из 6 эмоций: радость, грусть, удивление, любовь, злость, подмигивание. Пользователь вводит одну идею и включает этот режим перед генерацией. Цена — 12 монет за 6 успешных стикеров; за несозданные картинки монеты возвращаются.
+3D-look создаёт статичную иллюстрацию, не 3D-модель и не анимированный стикер. Независимые генерации не гарантируют полное совпадение деталей персонажа. Темы меняют интерфейс. Сохранённые шаблоны и избранные наборы убраны из интерфейса.
+Подписки также можно купить за монеты в приложении: Standard 640, Luxury 1980, Ultimate 8760 на 30 дней. Покупка за монеты доступна раз в три календарных месяца на аккаунт для всех тарифов вместе; ограничение не относится к Stars.
 После сохранения стикеры сразу появляются в личном списке стикерпаков в
 Telegram: их можно найти через встроенный поиск стикеров в любом чате (иконка стикеров в поле ввода
 сообщения → раздел "Мои наборы"), а управлять своими сохранёнными наборами можно через официального
-Telegram-бота @Stickers. Если генерация не удалась — можно просто попробовать ещё раз, это бесплатный
-сервис и иногда он перегружен. Отвечай кратко, по-дружески, на языке вопроса пользователя (русский
+Telegram-бота @Stickers. Если генерация не удалась — монеты за несозданные картинки возвращаются,
+можно попробовать ещё раз: сервис иногда перегружен. Отвечай кратко, по-дружески, на языке вопроса пользователя (русский
 или английский). Если вопрос не связан с ботом и стикерами — вежливо верни разговор к теме бота.`;
 
 async function handleChatMessage(message) {

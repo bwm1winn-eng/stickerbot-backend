@@ -69,11 +69,11 @@ async function run() {
   assert.equal(await context.maybeApplyDailyBonus(42, { tier: "standard", last_bonus_date: "2099-01-01" }), 8);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, "https://database.test/rest/v1/rpc/account_apply_daily_bonus");
-  assert.deepEqual(calls[0].body.p_bonus_by_tier, { standard: 3, luxury: 8, ultimate: 35 });
+  assert.deepEqual(calls[0].body.p_bonus_by_tier, { standard: 3, luxury: 0, ultimate: 0 });
 
   const valid = message();
   assert.ok(context.parseSuccessfulPayment(valid));
-  assert.ok(context.parseSuccessfulPayment(message({ type: "subscription", userId: 42, tier: "standard" }, { total_amount: 19 })));
+  assert.ok(context.parseSuccessfulPayment(message({ type: "subscription", userId: 42, tier: "standard" }, { total_amount: 21 })));
   assert.ok(context.parseSuccessfulPayment(message({ type: "subscription", userId: 42, tier: "standard", stars: 18 }, { total_amount: 18 })));
   const invalid = [
     message({}, { invoice_payload: "{" }), message({}, { invoice_payload: "null" }),
@@ -145,4 +145,3 @@ async function run() {
   console.log("PASS: atomic RPC routing, parsed DB errors, invoice validation, checkout rejection, payment retry, duplicate suppression and notification failure handling");
 }
 run().catch((err) => { console.error(err); process.exitCode = 1; });
-

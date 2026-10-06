@@ -39,21 +39,13 @@
     --gold: #b8860b;
     --overlay: rgba(20,20,15,0.45);
   }
-  html[data-theme="rose"]{
-    --bg:#170b13; --bg-glow-1:rgba(255,93,173,.19); --bg-glow-2:rgba(177,91,255,.13);
-    --panel:#24121e; --panel-solid:#291522; --line:#43253a; --text:#fff0f7;
-    --text-dim:#c59caf; --text-faint:#896477; --gold:#ff79b8; --overlay:rgba(12,4,10,.78);
-  }
+
   html[data-theme="violet"]{
     --bg:#100d1b; --bg-glow-1:rgba(147,108,255,.19); --bg-glow-2:rgba(83,166,255,.12);
     --panel:#1b1729; --panel-solid:#201b31; --line:#332b49; --text:#f5f0ff;
     --text-dim:#aaa0c7; --text-faint:#726987; --gold:#b69aff; --overlay:rgba(5,3,12,.78);
   }
-  html[data-theme="ocean"]{
-    --bg:#071519; --bg-glow-1:rgba(50,214,194,.17); --bg-glow-2:rgba(47,131,255,.13);
-    --panel:#102126; --panel-solid:#13272d; --line:#234047; --text:#e9fffc;
-    --text-dim:#91b7b2; --text-faint:#5e8581; --gold:#55dfc9; --overlay:rgba(1,9,11,.8);
-  }
+
   html[data-theme="graphite"]{
     --bg:#111315; --bg-glow-1:rgba(185,199,210,.10); --bg-glow-2:rgba(110,143,168,.10);
     --panel:#1a1d20; --panel-solid:#202428; --line:#30363b; --text:#f0f3f5;
@@ -120,7 +112,8 @@
     letter-spacing: 0.02em; color: var(--text);
   }
   .topbar-right{ display: flex; align-items: center; gap: 8px; }
-  .topbar-right{ flex-shrink:0; }
+  .topbar-right{ min-width:0; flex:1; flex-wrap:wrap; justify-content:flex-end; }
+  .topbar .brand{ flex-shrink:0; align-self:flex-start; padding-top:10px; }
   .settings-select{
     width:100%; min-height:46px; padding:11px 13px; border-radius:13px;
     border:1px solid var(--line); background:var(--panel); color:var(--text);
@@ -1125,16 +1118,39 @@
   @keyframes auroraDrift{from{background-position:0% 30%}to{background-position:100% 70%}}
   .premium-workspace{margin:14px 0;padding:16px;border:1px solid var(--line);border-radius:18px;background:var(--panel)}
   .premium-workspace h2{font-size:14px;margin:0 0 8px}.premium-workspace p{font-size:11px;color:var(--text-dim);line-height:1.6;margin:7px 0}
-  .premium-recipe-list{display:grid;gap:8px;margin-top:10px;max-height:216px;overflow-y:auto;overscroll-behavior:contain}.premium-recipe-row{display:flex;gap:8px}
-  .premium-recipe-row .recipe-load{flex:1;min-width:0;text-align:start;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .premium-recipe-row button,.premium-save-recipe,.premium-builder-apply,.premium-favorite{min-height:40px;border:1px solid var(--line);background:var(--panel-solid);color:var(--text);border-radius:11px;padding:9px 12px;font:600 12px 'Manrope',sans-serif;cursor:pointer}
-  .premium-favorite{flex:0 0 40px;padding:6px;font-size:18px}.premium-favorite[aria-pressed="true"]{color:var(--gold)}
-  .premium-builder{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}.premium-builder-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
-  .premium-builder label{font-size:11px;color:var(--text-dim)}.premium-builder select{width:100%;margin-top:5px;min-height:40px}
+  .premium-quick-field{display:grid;gap:7px;font-size:12px;color:var(--text-dim)}
+  .premium-quick-field .settings-select{min-height:44px;font-size:13px}
+  .premium-emotions{display:flex;align-items:flex-start;gap:10px;margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px;cursor:pointer}
+  .premium-emotions[hidden]{display:none}.premium-emotions input{width:19px;height:19px;flex:0 0 19px;margin:2px 0;accent-color:var(--gold)}
+  .premium-emotions strong{display:block;font-size:12px}.premium-emotions small{display:block;margin-top:4px;color:var(--text-dim);font-size:11px;line-height:1.5}
+  .premium-plan-icon svg{width:18px;height:18px;display:block}.premium-hero-icon svg{width:46px;height:46px;display:block;margin:0 auto;color:#84b9ec}
+  .emotion-result-label{position:absolute;bottom:6px;left:6px;right:6px;pointer-events:none;font-size:11px;line-height:1.3;text-align:center;padding:5px 7px;background:var(--panel-solid);color:var(--text);border:1px solid var(--line);border-radius:7px}
+  .premium-btn.is-active:not(.is-luxury-active):not(.is-ultimate-active){background:linear-gradient(135deg,#3479b5,#1c476d);border-color:#74ace0}
+  .premium-badge:not(.is-luxury-badge):not(.is-ultimate-badge){color:#84b9ec;text-shadow:none}
+  .premium-price:not(.is-luxury):not(.is-ultimate){color:#76a9d8}
+  .premium-subscribe-btn:not(.is-luxury):not(.is-ultimate),.tier-toggle-opt.active:not(.tier-toggle-luxury):not(.tier-toggle-ultimate){background:linear-gradient(135deg,#357ab8,#1e486e);border-color:#74ace0;box-shadow:0 4px 12px #3479b525}
+  html[data-theme="oled"]{--bg:#000;--bg-glow-1:transparent;--bg-glow-2:transparent;--panel:#080808;--panel-solid:#0d0d0d;--line:#262626;--text:#f5f5f5;--text-dim:#aaa;--text-faint:#858585;--gold:#e8c978;--overlay:rgba(0,0,0,.92);color-scheme:dark}
+  html[data-theme="oled"] .bg-decor,html[data-theme="oled"] .bg-grid{display:none}
+  html[data-theme="oled"] .premium-badge{animation:none;text-shadow:none}
+  html[data-theme="oled"] .premium-btn,html[data-theme="oled"] .tier-toggle-opt{box-shadow:none}
+  html[data-theme="oled"] .modal,html[data-theme="oled"] .prompt-box,html[data-theme="oled"] .main-tabs,html[data-theme="oled"] .theme-btn{box-shadow:none;backdrop-filter:none}
+  html[data-theme="editorial"]{--bg:#f9f6ee;--bg-glow-1:transparent;--bg-glow-2:transparent;--panel:#fffdf8;--panel-solid:#fffdf8;--line:#bcb7ab;--text:#181b20;--text-dim:#62615a;--text-faint:#78766f;--gold:#2059a1;--overlay:rgba(23,24,29,.5);color-scheme:light}
+  html[data-theme="light"]{color-scheme:light}
+  html[data-theme="editorial"] .bg-decor,html[data-theme="editorial"] .bg-grid{display:none}
+  html[data-theme="editorial"] .app{max-width:640px}
+  html[data-theme="editorial"] .topbar{border-bottom:2px solid var(--text);padding-bottom:14px;margin-bottom:18px}
+  html[data-theme="editorial"] #titleText{font-family:Georgia,serif;font-size:clamp(28px,6vw,38px);font-weight:500;line-height:1.12;letter-spacing:-.035em}
+  html[data-theme="editorial"] .main-tabs{padding:0;gap:0;background:transparent;border-width:0 0 1px;border-radius:0;margin-bottom:22px}
+  html[data-theme="editorial"] .main-tab{border-radius:0;padding:12px 6px;border-bottom:2px solid transparent}
+  html[data-theme="editorial"] .main-tab.active{background:transparent;color:var(--text);border-bottom-color:var(--text);box-shadow:none}
+  html[data-theme="editorial"] .prompt-box,html[data-theme="editorial"] .premium-workspace,html[data-theme="editorial"] .library-pack,html[data-theme="editorial"] .modal,html[data-theme="editorial"] .settings-select{border-radius:4px;box-shadow:none;background:var(--panel)}
+  html[data-theme="editorial"] .theme-btn,html[data-theme="editorial"] .chip,html[data-theme="editorial"] .generate-btn,html[data-theme="editorial"] .premium-emotions{border-radius:5px}
+  html[data-theme="editorial"] .history-row{border-radius:0;border-width:0 0 1px;background:transparent}
+  html[data-theme="editorial"] .modal::before{display:none}
   html[data-motion="reduced"] .prompt-box{animation:none!important}
   html[data-page-hidden="yes"] .prompt-box{animation-play-state:paused!important}
   @media(prefers-reduced-motion:reduce){html[data-theme="ultimate-aurora"] .prompt-box{animation:none!important}}
-  @media(max-width:360px){.premium-builder-fields{grid-template-columns:1fr}}
+
 </style>
 </head>
 <body>
@@ -1181,14 +1197,14 @@
 
   <section class="premium-workspace" id="premiumWorkspace" hidden aria-labelledby="premiumWorkspaceTitle">
     <h2 id="premiumWorkspaceTitle"></h2><p id="premiumWorkspaceHint"></p>
-    <button class="premium-save-recipe" id="premiumSaveRecipe" type="button"></button>
-    <div id="premiumRecipeList" class="premium-recipe-list"></div>
-    <div class="premium-builder" id="premiumPromptBuilder" hidden>
-      <h2 id="premiumBuilderTitle"></h2><div class="premium-builder-fields">
-        <label><span id="premiumStyleLabel"></span><select class="settings-select" id="premiumStyle"><option value="anime">Anime</option><option value="clay">3D clay</option><option value="paper">Paper cut</option><option value="pixel">Pixel art</option></select></label>
-        <label><span id="premiumMoodLabel"></span><select class="settings-select" id="premiumMood"><option value="playful">Playful</option><option value="calm">Calm</option><option value="dramatic">Dramatic</option><option value="dreamy">Dreamy</option></select></label>
-      </div><button class="premium-builder-apply" id="premiumApplyStyle" type="button"></button>
-    </div>
+    <label class="premium-quick-field" for="premiumStyle"><span id="premiumStyleLabel"></span>
+      <select class="settings-select" id="premiumStyle">
+        <option value="">Original</option><option value="vector">Clean vector</option><option value="clay3d">Sculpted 3D clay</option><option value="paper">Paper cut</option><option value="anime">Anime</option>
+      </select>
+    </label>
+    <label class="premium-emotions" id="premiumEmotionControl" hidden>
+      <input id="premiumEmotionSet" type="checkbox"><span><strong id="premiumEmotionLabel"></strong><small id="premiumEmotionHint"></small></span>
+    </label>
   </section>
   <div class="count-row" id="countRow"></div>
   <small class="free-daily-hint" id="freeDailyHint" hidden></small>
@@ -1383,12 +1399,10 @@
     <div class="settings-field">
       <label id="settingsThemeLabel" for="themeSelect">Стиль интерфейса</label>
       <select class="settings-select" id="themeSelect">
-        <option value="original">Dark · Original</option>
-        <option value="rose">Rose</option>
-        <option value="violet">Violet</option>
-        <option value="ocean">Ocean</option>
-        <option value="light">Light</option>
-        <option value="graphite">Graphite</option><option value="luxury-gold">Gold Atelier · Luxury</option><option value="ultimate-aurora">Aurora Studio · Ultimate</option>
+        <option value="light">Light</option><option value="original">Dark · Original</option>
+        <option value="oled">Pure Black</option><option value="editorial">Editorial</option>
+        <option value="violet">Violet</option><option value="graphite">Graphite</option>
+        <option value="luxury-gold">Gold Atelier · Luxury</option><option value="ultimate-aurora">Aurora Studio · Ultimate</option>
       </select>
     </div>
     <div class="settings-field">
@@ -1453,7 +1467,7 @@
 
     <div class="tier-toggle" id="tierToggle">
       <button type="button" class="tier-toggle-opt active" data-tier="standard" id="tierBtnStandard">
-        <span class="tier-toggle-emoji">🔴</span> <span id="tierBtnStandardLabel">Standard</span>
+        <span class="tier-toggle-emoji premium-plan-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 9 9-9 9-9-9 9-9Z"/><path d="m8 12 3 3 5-6"/></svg></span> <span id="tierBtnStandardLabel">Standard</span>
       </button>
       <button type="button" class="tier-toggle-opt tier-toggle-luxury" data-tier="luxury" id="tierBtnLuxury">
         <span class="tier-toggle-emoji">👑</span> <span id="tierBtnLuxuryLabel">Luxury</span>
@@ -1583,101 +1597,57 @@
   }
   let premiumState = { active: false, expiresAt: null, tier: null };
 
-  const STUDIO_TEXT = {"en":["Your studio","Save ideas and batch sizes on this device. Favorite packs appear first in your library.","Save current idea","Name this recipe","Type an idea first","Recipe limit reached","Saved for this session","Saved","Delete recipe","Favorite pack","Saved recipes","Prompt builder","Art style","Mood","Add to description","Anime","3D clay","Paper cut","Pixel art","Playful","Calm","Dramatic","Dreamy"],"ru":["Твоя студия","Сохраняй идеи и количество стикеров на этом устройстве. Избранные наборы будут первыми в библиотеке.","Сохранить текущую идею","Название шаблона","Сначала опиши идею","Достигнут лимит шаблонов","Сохранено на время сеанса","Сохранено","Удалить шаблон","Избранный набор","Шаблоны генерации","Конструктор описания","Стиль","Настроение","Добавить в описание","Аниме","3D-пластилин","Бумажная аппликация","Пиксель-арт","Игривое","Спокойное","Драматичное","Мечтательное"],"es":["Tu estudio","Guarda ideas y cantidades en este dispositivo. Los favoritos aparecen primero.","Guardar idea","Nombre de plantilla","Escribe una idea primero","Límite de plantillas","Guardado para esta sesión","Guardado","Eliminar plantilla","Paquete favorito","Plantillas guardadas","Constructor de descripción","Estilo","Ambiente","Añadir a descripción","Anime","Arcilla 3D","Papel recortado","Arte píxel","Divertido","Tranquilo","Dramático","Soñador"],"zh":["你的工作室","在此设备保存创意和数量。收藏的贴纸包优先显示。","保存创意","模板名称","请先输入创意","模板数量已达上限","已保存到当前会话","已保存","删除模板","收藏贴纸包","已保存模板","描述构建器","风格","氛围","添加到描述","动漫","3D黏土","剪纸","像素艺术","活泼","平静","戏剧性","梦幻"],"hi":["आपका स्टूडियो","इस डिवाइस पर विचार और संख्या सहेजें। पसंदीदा पैक पहले दिखेंगे।","विचार सहेजें","टेम्पलेट का नाम","पहले विचार लिखें","टेम्पलेट सीमा पूरी","इस सत्र में सहेजा","सहेजा गया","टेम्पलेट हटाएँ","पसंदीदा पैक","सहेजे टेम्पलेट","विवरण निर्माता","शैली","मूड","विवरण में जोड़ें","ऐनिमे","3D मिट्टी","पेपर कट","पिक्सेल कला","चंचल","शांत","नाटकीय","स्वप्निल"],"ar":["استوديوك","احفظ الأفكار والأعداد على هذا الجهاز. تظهر الحزم المفضلة أولاً.","حفظ الفكرة","اسم القالب","اكتب فكرة أولاً","وصلت إلى حد القوالب","تم الحفظ لهذه الجلسة","تم الحفظ","حذف القالب","حزمة مفضلة","القوالب المحفوظة","منشئ الوصف","الأسلوب","المزاج","إضافة إلى الوصف","أنمي","صلصال ثلاثي الأبعاد","قصاصات ورق","فن البكسل","مرح","هادئ","درامي","حالم"],"pt":["Seu estúdio","Salve ideias e quantidades neste dispositivo. Favoritos aparecem primeiro.","Salvar ideia","Nome do modelo","Escreva uma ideia primeiro","Limite de modelos atingido","Salvo nesta sessão","Salvo","Excluir modelo","Pacote favorito","Modelos salvos","Construtor de descrição","Estilo","Clima","Adicionar à descrição","Anime","Argila 3D","Recorte de papel","Pixel art","Divertido","Calmo","Dramático","Sonhador"],"fr":["Votre studio","Enregistrez idées et quantités sur cet appareil. Les favoris apparaissent en premier.","Enregistrer l’idée","Nom du modèle","Écrivez une idée d’abord","Limite de modèles atteinte","Enregistré pour cette session","Enregistré","Supprimer le modèle","Pack favori","Modèles enregistrés","Créateur de description","Style","Ambiance","Ajouter à la description","Anime","Argile 3D","Papier découpé","Pixel art","Ludique","Calme","Dramatique","Rêveur"],"ja":["あなたのスタジオ","この端末にアイデアと枚数を保存。お気に入りパックを先頭に表示。","アイデアを保存","テンプレート名","先にアイデアを入力","保存上限に達しました","このセッションに保存","保存しました","テンプレートを削除","お気に入りパック","保存テンプレート","説明ビルダー","スタイル","雰囲気","説明に追加","アニメ","3Dクレイ","切り絵","ピクセルアート","楽しい","穏やか","ドラマチック","夢のよう"],"de":["Dein Studio","Ideen und Mengen auf diesem Gerät speichern. Favoriten stehen oben.","Idee speichern","Vorlagenname","Zuerst eine Idee schreiben","Vorlagenlimit erreicht","Für diese Sitzung gespeichert","Gespeichert","Vorlage löschen","Lieblingspaket","Gespeicherte Vorlagen","Beschreibungsbaukasten","Stil","Stimmung","Zur Beschreibung hinzufügen","Anime","3D-Knete","Papierschnitt","Pixel-Art","Verspielt","Ruhig","Dramatisch","Verträumt"],"id":["Studio Anda","Simpan ide dan jumlah di perangkat ini. Paket favorit tampil pertama.","Simpan ide","Nama templat","Tulis ide terlebih dahulu","Batas templat tercapai","Disimpan untuk sesi ini","Disimpan","Hapus templat","Paket favorit","Templat tersimpan","Pembuat deskripsi","Gaya","Suasana","Tambahkan ke deskripsi","Anime","Tanah liat 3D","Potongan kertas","Seni piksel","Ceria","Tenang","Dramatis","Melamun"],"tr":["Stüdyon","Fikirleri ve adetleri bu cihazda kaydet. Favoriler en üstte görünür.","Fikri kaydet","Şablon adı","Önce bir fikir yaz","Şablon sınırına ulaşıldı","Bu oturum için kaydedildi","Kaydedildi","Şablonu sil","Favori paket","Kayıtlı şablonlar","Açıklama oluşturucu","Stil","Ruh hali","Açıklamaya ekle","Anime","3D kil","Kâğıt kesim","Piksel sanatı","Neşeli","Sakin","Dramatik","Rüya gibi"]};
-  const studioKey = 'stickerStudioV1:' + (tg?.initDataUnsafe?.user?.id ?? 'guest');
-  let studioRecipes = [], studioFavorites = [], studioReady = false;
-  let studioRenderKey = '', studioAccessState = '', studioExpiryTimer;
-  function studioText() { return STUDIO_TEXT[lang] || STUDIO_TEXT.en; }
-  function premiumStudioAccess(ultimateOnly = false) {
-    return !!premiumState.active && !!premiumState.expiresAt && new Date(premiumState.expiresAt).getTime() > Date.now()
-      && (premiumState.tier === 'ultimate' || (!ultimateOnly && premiumState.tier === 'luxury'));
+  const STUDIO_TEXT = {"en":["Quick studio","Choose the look once. Keep your idea simple and editable.","Art style","Original","Clean vector","Sculpted 3D clay","Paper cut","Anime","Emotion set · Ultimate","6 expressions · 6 stickers · 12 coins","Four styles in one tap","Turn one idea into six expressions","Premium feature unavailable","Happy","Sad","Surprised","Love","Angry","Wink"],"ru":["Быстрая студия","Выбери стиль одним нажатием. Идея остаётся простой и редактируемой.","Стиль","Оригинальный","Чистый вектор","Объёмный 3D-пластилин","Бумажная аппликация","Аниме","Набор эмоций · Ultimate","6 эмоций · 6 стикеров · 12 монет","Четыре стиля одним нажатием","Одна идея — шесть эмоций","Платная функция недоступна","Радость","Грусть","Удивление","Любовь","Злость","Подмигивание"],"es":["Estudio rápido","Elige el estilo una vez. Tu idea sigue siendo editable.","Estilo","Original","Vector limpio","Arcilla 3D esculpida","Papel recortado","Anime","Set de emociones · Ultimate","6 expresiones · 6 stickers · 12 monedas","Cuatro estilos con un toque","Una idea, seis expresiones","Función premium no disponible","Feliz","Triste","Sorpresa","Amor","Enfado","Guiño"],"zh":["快速工作室","一键选择画风，创意可随时编辑。","画风","原版","简洁矢量","立体3D黏土","剪纸","动漫","表情套装 · Ultimate","6种表情 · 6张贴纸 · 12金币","一键选择四种画风","一个创意生成六种表情","高级功能不可用","开心","难过","惊讶","爱心","生气","眨眼"],"hi":["त्वरित स्टूडियो","एक बार शैली चुनें। आपका विचार संपादन योग्य रहता है।","शैली","मूल","साफ़ वेक्टर","तराशी गई 3D मिट्टी","पेपर कट","ऐनिमे","भावना सेट · Ultimate","6 भाव · 6 स्टिकर · 12 सिक्के","एक टैप में चार शैलियाँ","एक विचार से छह भाव","प्रीमियम सुविधा उपलब्ध नहीं","खुश","उदास","हैरान","प्यार","गुस्सा","आँख मारना"],"ar":["الاستوديو السريع","اختر المظهر مرة واحدة. تبقى فكرتك قابلة للتعديل.","الأسلوب","الأصلي","رسم متجهي واضح","صلصال ثلاثي الأبعاد","قصاصات ورق","أنمي","مجموعة تعابير · Ultimate","6 تعابير · 6 ملصقات · 12 عملة","أربعة أساليب بلمسة واحدة","فكرة واحدة إلى ستة تعابير","الميزة المميزة غير متاحة","سعيد","حزين","متفاجئ","حب","غاضب","غمزة"],"pt":["Estúdio rápido","Escolha o estilo uma vez. Sua ideia continua editável.","Estilo","Original","Vetor limpo","Argila 3D esculpida","Recorte de papel","Anime","Conjunto de emoções · Ultimate","6 expressões · 6 stickers · 12 moedas","Quatro estilos em um toque","Uma ideia, seis expressões","Recurso premium indisponível","Feliz","Triste","Surpreso","Amor","Raiva","Piscadela"],"fr":["Studio rapide","Choisissez le style une fois. Votre idée reste modifiable.","Style","Original","Vectoriel net","Argile 3D sculptée","Papier découpé","Anime","Pack d’émotions · Ultimate","6 expressions · 6 stickers · 12 pièces","Quatre styles en un geste","Une idée, six expressions","Fonction premium indisponible","Heureux","Triste","Surpris","Amour","En colère","Clin d’œil"],"ja":["クイックスタジオ","一度タップして画風を選択。アイデアは自由に編集できます。","画風","オリジナル","シンプルなベクター","立体3Dクレイ","切り絵","アニメ","表情セット · Ultimate","6つの表情 · 6枚のステッカー · 12コイン","ワンタップで4つの画風","1つのアイデアから6つの表情","プレミアム機能は利用できません","喜び","悲しみ","驚き","愛","怒り","ウインク"],"de":["Schnellstudio","Wähle den Stil einmal. Deine Idee bleibt bearbeitbar.","Stil","Original","Klare Vektorgrafik","Geformte 3D-Knete","Papierschnitt","Anime","Emotionsset · Ultimate","6 Ausdrücke · 6 Sticker · 12 Münzen","Vier Stile mit einem Tippen","Eine Idee, sechs Ausdrücke","Premiumfunktion nicht verfügbar","Fröhlich","Traurig","Überrascht","Liebe","Wütend","Zwinkern"],"id":["Studio cepat","Pilih gaya sekali. Ide Anda tetap bisa diedit.","Gaya","Asli","Vektor bersih","Tanah liat 3D","Potongan kertas","Anime","Set emosi · Ultimate","6 ekspresi · 6 stiker · 12 koin","Empat gaya dalam satu ketukan","Satu ide, enam ekspresi","Fitur premium tidak tersedia","Senang","Sedih","Terkejut","Cinta","Marah","Kedipan"],"tr":["Hızlı stüdyo","Görünümü bir kez seç. Fikrin düzenlenebilir kalır.","Stil","Orijinal","Temiz vektör","Şekillendirilmiş 3D kil","Kâğıt kesim","Anime","Duygu seti · Ultimate","6 ifade · 6 çıkartma · 12 jeton","Tek dokunuşta dört stil","Bir fikir, altı ifade","Premium özellik kullanılamıyor","Mutlu","Üzgün","Şaşkın","Sevgi","Kızgın","Göz kırpma"]};
+  let studioReady=false, studioAccessState='', studioExpiryTimer;
+  let quickStyle='', generationPreset='', generationBusy=false;
+  function studioText(){return STUDIO_TEXT[lang]||STUDIO_TEXT.en;}
+  function premiumStudioAccess(ultimateOnly=false){
+    return !!premiumState.active && !!premiumState.expiresAt && new Date(premiumState.expiresAt).getTime()>Date.now()
+      && (premiumState.tier==='ultimate'||(!ultimateOnly&&premiumState.tier==='luxury'));
   }
-  function readStudioPreferences() {
-    try {
-      const saved = JSON.parse(localStorage.getItem(studioKey) || '{}');
-      studioRecipes = Array.isArray(saved.recipes) ? saved.recipes.filter(r=>r && typeof r.name==='string' && typeof r.prompt==='string' && Number.isInteger(r.count)).slice(0,24).map(r=>({id:String(r.id).slice(0,80),name:r.name.slice(0,40),prompt:r.prompt.slice(0,4000),count:Math.max(1,Math.min(12,r.count))})) : [];
-      studioFavorites = Array.isArray(saved.favorites) ? saved.favorites.filter(v=>typeof v==='string').slice(0,100) : [];
-    } catch (e) { /* optional device preferences */ }
-  }
-  function initializeStudio() {
-    if (studioReady) return;
-    studioReady = true;
-    readStudioPreferences();
-    document.getElementById('premiumSaveRecipe').addEventListener('click', () => {
-      if (!premiumStudioAccess()) return;
-      const t = studioText(), input = document.getElementById('promptInput');
-      if (!input.value.trim()) return showToast(t[4]);
-      const limit = premiumStudioAccess(true) ? 24 : 8;
-      if (studioRecipes.length >= limit) return showToast(t[5]);
-      const name = window.prompt(t[3],input.value.trim().slice(0,40));
-      if (name===null || !name.trim()) return;
-      studioRecipes.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2),name:name.trim().slice(0,40),prompt:input.value.trim().slice(0,4000),count:genCount});
-      persistStudio(); studioRenderKey='';renderStudio();
+  function initializeStudio(){
+    if(studioReady)return;studioReady=true;
+    document.getElementById('premiumStyle').addEventListener('change',event=>{
+      if(generationBusy||!premiumStudioAccess()){renderStudio();return;}
+      quickStyle=event.target.value;renderStudio();
     });
-    document.getElementById('premiumApplyStyle').addEventListener('click', () => {
-      if (!premiumStudioAccess(true)) return;
-      const input=document.getElementById('promptInput');
-      if (!input.value.trim()) return showToast(studioText()[4]);
-      const styles={anime:'anime sticker art',clay:'3D clay sticker art',paper:'layered paper-cut sticker art',pixel:'pixel art sticker'};
-      const moods={playful:'playful mood',calm:'calm mood',dramatic:'dramatic mood',dreamy:'dreamy mood'};
-      const suffix=styles[document.getElementById('premiumStyle').value]+', '+moods[document.getElementById('premiumMood').value];
-      if (!input.value.trim().endsWith(suffix)) input.value=input.value.trim()+', '+suffix;
-      input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();
+    document.getElementById('premiumEmotionSet').addEventListener('change',event=>{
+      if(generationBusy||!premiumStudioAccess(true)){renderStudio();return;}
+      generationPreset=event.target.checked?'emotions':'';
+      if(generationPreset)genCount=6;
+      renderCountRow();renderBalance();renderStudio();
+      document.getElementById('costText').innerHTML=STR[lang].cost(genCost(genCount));
     });
   }
-  function persistStudio() {
-    try { localStorage.setItem(studioKey,JSON.stringify({recipes:studioRecipes,favorites:studioFavorites}));showToast(studioText()[7]); }
-    catch(e) { showToast(studioText()[6]); }
-  }
-  function renderStudio() {
-    if(premiumState.active && premiumState.expiresAt && new Date(premiumState.expiresAt).getTime()<=Date.now()){
-      premiumState.active=false;
-      queueMicrotask(()=>renderPremiumBadge());
+  function renderStudio(){
+    if(premiumState.active&&premiumState.expiresAt&&new Date(premiumState.expiresAt).getTime()<=Date.now()){
+      premiumState.active=false;queueMicrotask(()=>renderPremiumBadge());
     }
     initializeStudio();
-    const t=studioText(), unlocked=premiumStudioAccess(), ultimate=premiumStudioAccess(true);
+    const t=studioText(),unlocked=premiumStudioAccess(),ultimate=premiumStudioAccess(true);
+    if(!unlocked)quickStyle='';
+    if(!ultimate)generationPreset='';
     const accessState=unlocked+':'+ultimate;
-    if (studioAccessState!==accessState) {
-      studioAccessState=accessState;applyTheme(safeGetItem('stickerTheme')||'original');
-      if (typeof libraryLoaded!=='undefined' && libraryLoaded && !document.getElementById('libraryView').hidden) renderLibrary();
-    }
+    if(studioAccessState!==accessState){studioAccessState=accessState;applyTheme(safeGetItem('stickerTheme')||'original');}
     clearTimeout(studioExpiryTimer);
     const remaining=new Date(premiumState.expiresAt).getTime()-Date.now();
-    if (remaining>0) studioExpiryTimer=setTimeout(()=>renderStudio(),Math.min(remaining+50,2147483647));
-    const key=lang+':'+accessState+':'+JSON.stringify(studioRecipes);
-    if (studioRenderKey===key) return;
-    studioRenderKey=key;
+    if(remaining>0)studioExpiryTimer=setTimeout(()=>renderStudio(),Math.min(remaining+50,2147483647));
     const panel=document.getElementById('premiumWorkspace');panel.hidden=!unlocked;panel.style.display=unlocked?'':'none';
     document.getElementById('premiumWorkspaceTitle').textContent=t[0];document.getElementById('premiumWorkspaceHint').textContent=t[1];
-    const limit=ultimate?24:8;
-    document.getElementById('premiumSaveRecipe').textContent='+ '+t[2]+' ('+Math.min(studioRecipes.length,limit)+'/'+limit+')';
-    const list=document.getElementById('premiumRecipeList');list.replaceChildren();
-    studioRecipes.slice(0,limit).forEach(recipe=>{
-      const row=document.createElement('div');row.className='premium-recipe-row';
-      const load=document.createElement('button');load.type='button';load.className='recipe-load';load.textContent=recipe.name+' · '+recipe.count;
-      load.addEventListener('click',()=>{
-        if (!premiumStudioAccess()) return;
-        const input=document.getElementById('promptInput');input.value=recipe.prompt;genCount=recipe.count;
-        renderCountRow();renderPremiumBadge();input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();
-      });
-      const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.setAttribute('aria-label',t[8]);
-      remove.addEventListener('click',()=>{if(!premiumStudioAccess())return;studioRecipes=studioRecipes.filter(r=>r.id!==recipe.id);persistStudio();studioRenderKey='';renderStudio();});
-      row.append(load,remove);list.appendChild(row);
-    });
-    const builder=document.getElementById('premiumPromptBuilder');builder.hidden=!ultimate;builder.style.display=ultimate?'':'none';
-    document.getElementById('premiumBuilderTitle').textContent=t[11];document.getElementById('premiumStyleLabel').textContent=t[12];document.getElementById('premiumMoodLabel').textContent=t[13];document.getElementById('premiumApplyStyle').textContent=t[14];
-    [...document.getElementById('premiumStyle').options].forEach((o,i)=>{o.textContent=t[15+i]});[...document.getElementById('premiumMood').options].forEach((o,i)=>{o.textContent=t[19+i]});
+    document.getElementById('premiumStyleLabel').textContent=t[2];
+    const select=document.getElementById('premiumStyle');
+    const styleLabels={'':t[3],vector:t[4],clay3d:t[5],paper:t[6],anime:t[7]};
+    [...select.options].forEach(option=>{option.textContent=styleLabels[option.value];});
+    select.value=quickStyle;select.disabled=generationBusy||!unlocked;
+    const control=document.getElementById('premiumEmotionControl');control.hidden=!ultimate;
+    const checkbox=document.getElementById('premiumEmotionSet');checkbox.checked=generationPreset==='emotions';checkbox.disabled=generationBusy||!ultimate;
+    document.getElementById('premiumEmotionLabel').textContent=t[8];document.getElementById('premiumEmotionHint').textContent=t[9];
     const gold=document.querySelector('#themeSelect option[value="luxury-gold"]'),aurora=document.querySelector('#themeSelect option[value="ultimate-aurora"]');
     gold.disabled=!unlocked;aurora.disabled=!ultimate;gold.textContent='Gold Atelier · Luxury'+(unlocked?'':' 🔒');aurora.textContent='Aurora Studio · Ultimate'+(ultimate?'':' 🔒');
   }
   document.addEventListener('visibilitychange',()=>{
     document.documentElement.dataset.pageHidden=document.hidden?'yes':'no';
     if(!document.hidden){renderStudio();syncBalanceFromServer();}
-  });
-  window.addEventListener('storage',event=>{
-    if(event.key!==studioKey && event.key!==null) return;
-    readStudioPreferences();studioRenderKey='';renderStudio();
-    if(libraryLoaded && !document.getElementById('libraryView').hidden) renderLibrary();
   });
 
   function genCost(n) {
@@ -1721,8 +1691,6 @@
       tierLuxury: 'Luxury',
       perkUltimateStyle: 'Эксклюзивный коллекционный стиль Ultimate с яркими цветами и чёткой обводкой',
       perkUltimateBadge: 'Особый значок Ultimate в приложении',
-      perkPriority: 'Приоритет генерации — меньше ожидания',
-      perkMaxPriority: 'Максимальный приоритет — вообще без пауз',
       perkCostPerImage: (n) => `${n} $ за картинку вместо 5 $`,
       perkMaxImages: (n) => `До ${n} стикеров за один раз`,
       perkDailyBonus: (n) => `Ежедневный бонус +${n} $ на баланс`,
@@ -1795,8 +1763,6 @@
       tierLuxury: 'Luxury',
       perkUltimateStyle: 'Exclusive Ultimate collectible style with vivid colors and crisp outlines',
       perkUltimateBadge: 'Exclusive Ultimate badge in the app',
-      perkPriority: 'Generation priority — less waiting',
-      perkMaxPriority: 'Maximum priority — no pauses at all',
       perkCostPerImage: (n) => `$${n} per image instead of $5`,
       perkMaxImages: (n) => `Up to ${n} stickers per batch`,
       perkDailyBonus: (n) => `Daily +$${n} balance bonus`,
@@ -1872,8 +1838,6 @@
       "premiumSub": "Compara los tres planes y elige el tuyo.",
       "tierStandard": "Estándar",
       "tierLuxury": "lujo",
-      "perkPriority": "Prioridad de generación: menos espera",
-      "perkMaxPriority": "Prioridad máxima: sin pausas",
       "perkStandardStyle": "Estilo de etiqueta mejorado",
       "perkLuxuryStyle": "Estilo brillante exclusivo con luz de borde dorado.",
       "perkLuxuryBadge": "Insignia Gold Luxury en la aplicación",
@@ -1974,8 +1938,6 @@
       "premiumSub": "比较三个套餐并选择适合你的。",
       "tierStandard": "标准型",
       "tierLuxury": "奢华",
-      "perkPriority": "生成优先级——减少等待",
-      "perkMaxPriority": "最高优先级——完全没有暂停",
       "perkStandardStyle": "增强的贴纸样式",
       "perkLuxuryStyle": "独特的光泽风格，带金边灯",
       "perkLuxuryBadge": "应用程序中的金色豪华徽章",
@@ -2076,8 +2038,6 @@
       "premiumSub": "तीनों प्लान देखें और अपना चुनें।",
       "tierStandard": "मानक",
       "tierLuxury": "विलासिता",
-      "perkPriority": "पीढ़ी की प्राथमिकता - कम प्रतीक्षा",
-      "perkMaxPriority": "अधिकतम प्राथमिकता - बिल्कुल भी नहीं रुकना",
       "perkStandardStyle": "उन्नत स्टिकर शैली",
       "perkLuxuryStyle": "सोने की रिम लाइट के साथ विशेष चमकदार शैली",
       "perkLuxuryBadge": "ऐप में गोल्ड लक्ज़री बैज",
@@ -2178,8 +2138,6 @@
       "premiumSub": "قارن الخطط الثلاث واختر ما يناسبك.",
       "tierStandard": "قياسي",
       "tierLuxury": "فاخرة",
-      "perkPriority": "أولوية الجيل - انتظار أقل",
-      "perkMaxPriority": "الأولوية القصوى - لا توقف على الإطلاق",
       "perkStandardStyle": "نمط الملصق المحسن",
       "perkLuxuryStyle": "طراز لامع حصري مع ضوء حافة ذهبي",
       "perkLuxuryBadge": "شارة فاخرة ذهبية في التطبيق",
@@ -2280,8 +2238,6 @@
       "premiumSub": "Compare os três planos e escolha o seu.",
       "tierStandard": "Padrão",
       "tierLuxury": "Luxo",
-      "perkPriority": "Prioridade de geração — menos espera",
-      "perkMaxPriority": "Prioridade máxima – sem pausas",
       "perkStandardStyle": "Estilo de adesivo aprimorado",
       "perkLuxuryStyle": "Estilo brilhante exclusivo com luz de aro dourado",
       "perkLuxuryBadge": "Distintivo Gold Luxury no aplicativo",
@@ -2382,8 +2338,6 @@
       "premiumSub": "Comparez les trois offres et choisissez la vôtre.",
       "tierStandard": "Norme",
       "tierLuxury": "Luxe",
-      "perkPriority": "Priorité à la génération – moins d’attente",
-      "perkMaxPriority": "Priorité maximale – aucune pause du tout",
       "perkStandardStyle": "Style d'autocollant amélioré",
       "perkLuxuryStyle": "Style brillant exclusif avec bordure dorée",
       "perkLuxuryBadge": "Badge Gold Luxury dans l’application",
@@ -2484,8 +2438,6 @@
       "premiumSub": "3つのプランを比較して選択してください。",
       "tierStandard": "標準",
       "tierLuxury": "贅沢",
-      "perkPriority": "生成の優先順位 - 待ち時間が少なくなります",
-      "perkMaxPriority": "最大の優先度 — 一時停止はまったくありません",
       "perkStandardStyle": "強化されたステッカー スタイル",
       "perkLuxuryStyle": "ゴールドリムライトを備えた独自の光沢のあるスタイル",
       "perkLuxuryBadge": "アプリ内のゴールドラグジュアリーバッジ",
@@ -2586,8 +2538,6 @@
       "premiumSub": "Vergleiche alle drei Tarife und wähle deinen.",
       "tierStandard": "Standard",
       "tierLuxury": "Luxus",
-      "perkPriority": "Generationspriorität – weniger Warten",
-      "perkMaxPriority": "Maximale Priorität – überhaupt keine Pausen",
       "perkStandardStyle": "Verbesserter Aufkleberstil",
       "perkLuxuryStyle": "Exklusiver Hochglanzstil mit goldenem Randlicht",
       "perkLuxuryBadge": "Gold-Luxus-Abzeichen in der App",
@@ -2688,8 +2638,6 @@
       "premiumSub": "Bandingkan tiga paket dan pilih yang sesuai.",
       "tierStandard": "Standar",
       "tierLuxury": "Kemewahan",
-      "perkPriority": "Prioritas generasi — lebih sedikit menunggu",
-      "perkMaxPriority": "Prioritas maksimum — tidak ada jeda sama sekali",
       "perkStandardStyle": "Gaya stiker yang ditingkatkan",
       "perkLuxuryStyle": "Gaya glossy eksklusif dengan lampu pelek emas",
       "perkLuxuryBadge": "Lencana Emas Mewah di aplikasi",
@@ -2790,8 +2738,6 @@
       "premiumSub": "Üç planı karşılaştır ve sana uygun olanı seç.",
       "tierStandard": "Standart",
       "tierLuxury": "Lüks",
-      "perkPriority": "Üretim önceliği — daha az bekleme",
-      "perkMaxPriority": "Maksimum öncelik — hiç duraklama yok",
       "perkStandardStyle": "Geliştirilmiş çıkartma stili",
       "perkLuxuryStyle": "Altın çerçeveli ışıkla özel parlak stil",
       "perkLuxuryBadge": "Uygulamada Altın Lüks rozeti",
@@ -3062,6 +3008,7 @@
       : `${pick(parts.subjects)} ${pick(parts.actions)}, ${pick(parts.styles)}`;
     const input = document.getElementById('promptInput');
     input.value = prompt;
+    input.dispatchEvent(new Event('input',{bubbles:true}));
     input.focus();
   }
 
@@ -3117,28 +3064,18 @@
     document.getElementById('channelTaskHint').textContent = at.taskHint;
     document.getElementById('channelTaskReward').textContent = at.taskReward;
     document.getElementById('openChannelTask').textContent = at.openChannel;
-    document.getElementById('claimChannelTask').textContent = at.checkTask;
+    renderChannelTask();
     document.getElementById('futureTasksTitle').textContent = at.futureTitle;
     document.getElementById('futureTasksHint').textContent = at.futureHint;
     if (document.getElementById('historyView').hidden === false) renderActivityHistory();
     document.getElementById('helpBtn').title = lang === 'ru' ? 'Помощь и ИИ-помощник' : 'Help and AI assistant';
     document.getElementById('helpBtn').setAttribute('aria-label', document.getElementById('helpBtn').title);
-    const themeLabels = {
-      ru: ['Тёмная · оригинал', 'Розовая', 'Фиолетовая', 'Океан', 'Светлая', 'Графит'],
-      en: ['Dark · Original', 'Rose', 'Violet', 'Ocean', 'Light', 'Graphite'],
-      es: ['Oscuro · original', 'Rosa', 'Violeta', 'Océano', 'Claro', 'Grafito'],
-      zh: ['深色·原版', '玫瑰', '紫罗兰', '海洋', '浅色', '石墨'],
-      hi: ['डार्क · मूल', 'गुलाबी', 'बैंगनी', 'समुद्री', 'लाइट', 'ग्रेफाइट'],
-      ar: ['داكن · الأصلي', 'وردي', 'بنفسجي', 'محيطي', 'فاتح', 'جرافيت'],
-      pt: ['Escuro · original', 'Rosa', 'Violeta', 'Oceano', 'Claro', 'Grafite'],
-      fr: ['Sombre · original', 'Rose', 'Violet', 'Océan', 'Clair', 'Graphite'],
-      ja: ['ダーク · オリジナル', 'ローズ', 'バイオレット', 'オーシャン', 'ライト', 'グラファイト'],
-      de: ['Dunkel · Original', 'Rosé', 'Violett', 'Ozean', 'Hell', 'Graphit'],
-      id: ['Gelap · asli', 'Mawar', 'Ungu', 'Laut', 'Terang', 'Grafit'],
-      tr: ['Koyu · orijinal', 'Gül', 'Menekşe', 'Okyanus', 'Açık', 'Grafit'],
-    }[lang] || ['Dark · Original', 'Rose', 'Violet', 'Ocean', 'Light', 'Graphite'];
-    const themeIcons = ['🌑', '🌸', '💜', '🌊', '☀️', '⚫'];
-    document.querySelectorAll('#themeSelect option').forEach((option, i) => { option.textContent = `${themeIcons[i]} ${themeLabels[i]}`; });
+    const themeLabels=({"en":["Light","Dark · Original","Pure Black","Editorial","Violet","Graphite"],"ru":["Светлая","Тёмная · оригинал","Чистый чёрный","Редакционная","Фиолетовая","Графит"],"es":["Claro","Oscuro · original","Negro puro","Editorial","Violeta","Grafito"],"zh":["浅色","深色·原版","纯黑","编辑风","紫罗兰","石墨"],"hi":["लाइट","डार्क · मूल","शुद्ध काला","संपादकीय","बैंगनी","ग्रेफाइट"],"ar":["فاتح","داكن · الأصلي","أسود خالص","تحريري","بنفسجي","جرافيت"],"pt":["Claro","Escuro · original","Preto puro","Editorial","Violeta","Grafite"],"fr":["Clair","Sombre · original","Noir pur","Éditorial","Violet","Graphite"],"ja":["ライト","ダーク · オリジナル","ピュアブラック","エディトリアル","バイオレット","グラファイト"],"de":["Hell","Dunkel · Original","Reines Schwarz","Editorial","Violett","Graphit"],"id":["Terang","Gelap · asli","Hitam murni","Editorial","Ungu","Grafit"],"tr":["Açık","Koyu · orijinal","Saf siyah","Editoryal","Menekşe","Grafit"]})[lang]||["Light","Dark · Original","Pure Black","Editorial","Violet","Graphite"];
+    const themeValues=['light','original','oled','editorial','violet','graphite'];
+    const themeMap=Object.fromEntries(themeValues.map((value,i)=>[value,themeLabels[i]]));
+    document.querySelectorAll('#themeSelect option').forEach(option=>{
+      if(themeMap[option.value])option.textContent=themeMap[option.value];
+    });
     updateHelpAiLabels();
     document.getElementById('titleText').textContent = s.title;
     document.getElementById('subText').textContent = s.sub;
@@ -3166,7 +3103,7 @@
       const chip = document.createElement('div');
       chip.className = 'chip';
       chip.textContent = c.label;
-      chip.addEventListener('click', () => { document.getElementById('promptInput').value = c.fill; });
+      chip.addEventListener('click', () => { const input=document.getElementById('promptInput');input.value=c.fill;input.dispatchEvent(new Event('input',{bubbles:true})); });
       chipsRow.appendChild(chip);
     });
     const randomChip = document.createElement('div');
@@ -3183,7 +3120,7 @@
 
   // ---------- Theme ----------
   function applyTheme(theme) {
-    const supportedThemes = ['original', 'rose', 'violet', 'ocean', 'light', 'graphite', 'luxury-gold', 'ultimate-aurora'];
+    const supportedThemes = ['original','violet','light','graphite','oled','editorial','luxury-gold','ultimate-aurora'];
     if (theme === 'dark') theme = 'original';
     if (!supportedThemes.includes(theme)) theme = 'original';
     const preferredTheme=theme;
@@ -3192,8 +3129,7 @@
     document.getElementById('themeSelect').value = theme;
     try { localStorage.setItem('stickerTheme', preferredTheme); } catch (e) { /* optional preference */ }
     const chromeColors = {
-      original: '#0a0a0b', rose: '#170b13', violet: '#100d1b',
-      ocean: '#071519', light: '#f4f3ef', graphite: '#111315', 'luxury-gold':'#100e0b', 'ultimate-aurora':'#09121b',
+      original:'#0a0a0b',violet:'#100d1b',light:'#f4f3ef',graphite:'#111315',oled:'#000000',editorial:'#f9f6ee','luxury-gold':'#100e0b','ultimate-aurora':'#09121b',
     };
     const chromeColor = chromeColors[theme];
     try {
@@ -3372,6 +3308,8 @@
     btn.classList.toggle('is-active', !!premiumState.active);
     btn.classList.toggle('is-luxury-active', premiumState.tier === 'luxury');
     btn.classList.toggle('is-ultimate-active', premiumState.tier === 'ultimate');
+    if(!btn.dataset.defaultIcon)btn.dataset.defaultIcon=btn.innerHTML;
+    btn.innerHTML=premiumState.active&&premiumState.tier==='standard'?"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m12 3 9 9-9 9-9-9 9-9Z\"/><path d=\"m8 12 3 3 5-6\"/></svg>":btn.dataset.defaultIcon;
     renderStudio();
     if (typeof renderCountRow === 'function') renderCountRow();
     if (typeof renderBalance === 'function') renderBalance();
@@ -3384,6 +3322,7 @@
     document.getElementById('balanceNum').textContent = b;
     document.getElementById('hintBalance').textContent = s.balance + b;
     const btn = document.getElementById('generateBtn');
+    if(generationBusy){btn.disabled=true;document.getElementById('genBtnText').textContent=s.generating;return;}
     if (freeDailyLimitApplies() && freeDailyState.remaining === 0) {
       btn.classList.add('insufficient');
       btn.disabled = true;
@@ -3446,6 +3385,9 @@
   function renderCountRow() {
     const row = document.getElementById('countRow');
     row.innerHTML = '';
+    if(generationPreset==='emotions'&&premiumStudioAccess(true)){
+      genCount=6;const badge=document.createElement('div');badge.className='count-opt active';badge.textContent='6';badge.setAttribute('aria-label',studioText()[9]);row.appendChild(badge);return;
+    }
     const maxImages = premiumState.active
       ? (premiumState.tier === 'ultimate' ? 12 : premiumState.tier === 'luxury' ? 10 : premiumState.tier === 'standard' ? 6 : 4)
       : 4;
@@ -3460,7 +3402,7 @@
       el.textContent = n;
       el.setAttribute('aria-disabled', String(unavailable));
       el.addEventListener('click', () => {
-        if (unavailable) return;
+        if (unavailable || generationBusy) return;
         genCount = n;
         renderCountRow();
         document.getElementById('costText').innerHTML = STR[lang].cost(genCost(genCount));
@@ -3479,14 +3421,19 @@
   }
 
   generateBtn.addEventListener('click', async () => {
+    if(generationBusy)return;
+    renderStudio();renderCountRow();
     const s = STR[lang];
     const prompt = document.getElementById('promptInput').value.trim();
     if (!prompt) { document.getElementById('promptInput').focus(); return; }
-    const requestedCount = genCount;
+    const requestedCount=generationPreset==='emotions'&&premiumStudioAccess(true)?6:genCount;
+    const requestedStyle=premiumStudioAccess()?quickStyle:'';
+    const requestedPreset=premiumStudioAccess(true)?generationPreset:'';
     const cost = genCost(requestedCount);
     if (getBalance() < cost) { openGame(); return; }
     rememberPrompt(prompt);
 
+    generationBusy=true;renderStudio();
     generateBtn.disabled = true;
     document.getElementById('countRow').classList.add('locked');
     document.getElementById('genBtnText').textContent = s.generating;
@@ -3520,7 +3467,7 @@
       const res = await fetch(`${BACKEND}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, count: requestedCount, initData: tg?.initData || '' })
+        body: JSON.stringify({prompt,count:requestedCount,...(requestedStyle?{style:requestedStyle}:{}),...(requestedPreset?{preset:requestedPreset}:{}),initData:tg?.initData||''})
       });
 
       if (!res.ok) {
@@ -3532,6 +3479,11 @@
           resultsTitle.style.display = 'none';
           showToast(FREE_DAILY_EXHAUSTED[lang] || FREE_DAILY_EXHAUSTED.en);
           return;
+        }
+        if(errData.code==='STYLE_TIER_REQUIRED'||errData.code==='PRESET_TIER_REQUIRED'){
+          await syncBalanceFromServer(0);renderStudio();renderCountRow();
+          grid.innerHTML='';emptyState.style.display='';resultsTitle.style.display='none';
+          showToast(studioText()[12]);return;
         }
         if (errData.code === 'INSUFFICIENT_BALANCE' || res.status === 402) {
         if (typeof errData.balance === 'number') setBalance(errData.balance);
@@ -3570,6 +3522,7 @@
     } finally {
       clearInterval(statusInterval);
       clearTimeout(warmupTimeout);
+      generationBusy=false;renderStudio();
       generateBtn.disabled = false;
       document.getElementById('countRow').classList.remove('locked');
       renderBalance();
@@ -3600,6 +3553,9 @@
         fallback.className = 'image-fallback';
         fallback.innerHTML = '<b>✦</b><span>Не удалось загрузить<br>стикер</span>';
         card.append(image, fallback);
+        const emotionIndex=['happy','sad','wow','love','angry','wink'].indexOf(img?.emotion);
+        if(emotionIndex>=0){const label=document.createElement('span');label.className='emotion-result-label';label.textContent=studioText()[13+emotionIndex];card.appendChild(label);image.alt=label.textContent;card.setAttribute('aria-label',label.textContent);}
+
 
         const rawUrl = typeof img === 'string' ? img : img?.url;
         const sources = getImageSources(rawUrl);
@@ -3778,12 +3734,6 @@
       }));
       libraryLoaded = true;
       libraryLoading = false;
-      const names=new Set(myPacks.map(pack=>pack.short_name));
-      const retainedFavorites=studioFavorites.filter(name=>names.has(name));
-      if(retainedFavorites.length!==studioFavorites.length){
-        studioFavorites=retainedFavorites;
-        try{localStorage.setItem(studioKey,JSON.stringify({recipes:studioRecipes,favorites:studioFavorites}));}catch(e){/* session preferences remain available */}
-      }
       renderLibrary();
     } catch (e) {
       list.innerHTML = '';
@@ -3856,7 +3806,6 @@
     libraryObserver = observer;
 
     const orderedPacks=[...visiblePacks];
-    if (premiumStudioAccess()) orderedPacks.sort((a,b)=>Number(studioFavorites.includes(b.pack?.shortName))-Number(studioFavorites.includes(a.pack?.shortName)));
     orderedPacks.forEach((item) => {
       const pack = item.pack || {};
       const stickers = Array.isArray(item.stickers) ? item.stickers : [];
@@ -3865,10 +3814,6 @@
       const title = document.createElement('h3'); title.className = 'library-pack-name'; title.textContent = pack.title || pack.shortName;
       const count = document.createElement('span'); count.className = 'library-pack-count'; count.textContent = libraryText().stickerCount(stickers.length);
       head.append(title,count);
-      if(premiumStudioAccess()){
-        const star=document.createElement('button');star.type='button';star.className='premium-favorite';star.setAttribute('aria-label',studioText()[9]);star.setAttribute('aria-pressed',String(studioFavorites.includes(pack.shortName)));star.textContent=studioFavorites.includes(pack.shortName)?'★':'☆';
-        star.addEventListener('click',()=>{if(!premiumStudioAccess())return;if(studioFavorites.includes(pack.shortName))studioFavorites=studioFavorites.filter(name=>name!==pack.shortName);else if(studioFavorites.length<100)studioFavorites.push(pack.shortName);persistStudio();renderLibrary();});head.appendChild(star);
-      }
       card.appendChild(head);
       if (item.error) {
         const warning = document.createElement('div'); warning.className = 'library-state';
@@ -3940,8 +3885,6 @@
           await libraryRequest('/api/my-packs/delete', { shortName: pack.shortName });
           libraryPacks = libraryPacks.filter((entry) => entry.pack?.shortName !== pack.shortName);
           myPacks = myPacks.filter((entry) => entry.short_name !== pack.shortName);
-          studioFavorites=studioFavorites.filter(name=>name!==pack.shortName);
-          try{localStorage.setItem(studioKey,JSON.stringify({recipes:studioRecipes,favorites:studioFavorites}));}catch(e){/* session preferences remain available */}
           renderLibrary();
         } catch (e) { deletePack.disabled = false; showToast(libraryText().loadError); }
       });
@@ -4029,55 +3972,90 @@
     renderActivityHistory();
   });
 
-  let channelTaskClaimed = false;
-  let channelTaskClaimPending = false;
-  let channelTaskStatusVersion = 0;
-  async function updateChannelTaskStatus() {
-    if (channelTaskClaimPending) return;
-    const requestVersion = ++channelTaskStatusVersion;
-    const button = document.getElementById('claimChannelTask');
-    const status = document.getElementById('channelTaskStatus');
-    const t = activityText();
-    if (!tg?.initData) { status.textContent = t.taskLogin; button.disabled = true; return; }
-    button.disabled = true; status.textContent = t.checking;
-    try {
-      const response = await libraryRequest('/api/tasks/channel/status', {});
-      const data = await response.json();
-      if (requestVersion !== channelTaskStatusVersion || channelTaskClaimPending) return;
-      channelTaskClaimed = !!data.claimed;
-      status.textContent = channelTaskClaimed ? t.taskAlready : (data.joined ? t.taskJoined : t.taskNotJoined);
-      button.textContent = channelTaskClaimed ? (t.claimedTask || ACTIVITY_TEXT.en.claimedTask) : (data.joined ? (t.claimTask || ACTIVITY_TEXT.en.claimTask) : t.checkTask);
-      button.disabled = channelTaskClaimed;
-    } catch (error) {
-      if (requestVersion !== channelTaskStatusVersion || channelTaskClaimPending) return;
-      status.textContent = t.taskError; button.textContent = t.checkTask; button.disabled = false;
+  let channelTaskClaimed=false;
+  let channelTaskJoined=false;
+  let channelTaskClaimPending=false;
+  let channelTaskStatusPending=false;
+  let channelTaskStatusVersion=0;
+  let channelTaskNotice='';
+  const CHANNEL_TASK_FEEDBACK={"en":["Verification is temporarily unavailable. Try again shortly.","This task is temporarily unavailable. Please try again later.","Claim 10 coins","Reward claimed"],"ru":["Проверка временно недоступна. Попробуйте ещё раз чуть позже.","Задание временно недоступно. Попробуйте позже.","Получить 10 монет","Награда получена"],"es":["La verificación no está disponible. Inténtalo de nuevo en un momento.","Esta tarea no está disponible temporalmente. Inténtalo más tarde.","Recibir 10 monedas","Recompensa recibida"],"zh":["暂时无法验证，请稍后重试。","任务暂时不可用，请稍后重试。","领取10金币","奖励已领取"],"hi":["जाँच अभी उपलब्ध नहीं है। थोड़ी देर बाद फिर कोशिश करें।","यह कार्य अभी उपलब्ध नहीं है। बाद में कोशिश करें।","10 सिक्के लें","इनाम मिल गया"],"ar":["التحقق غير متاح مؤقتًا. حاول مجددًا بعد قليل.","هذه المهمة غير متاحة مؤقتًا. حاول لاحقًا.","استلام 10 عملات","تم استلام المكافأة"],"pt":["A verificação está indisponível. Tente novamente em instantes.","Esta tarefa está temporariamente indisponível. Tente mais tarde.","Receber 10 moedas","Recompensa recebida"],"fr":["La vérification est indisponible. Réessayez dans un instant.","Cette tâche est temporairement indisponible. Réessayez plus tard.","Recevoir 10 pièces","Récompense reçue"],"ja":["確認は一時的に利用できません。少し待って再度お試しください。","このタスクは一時的に利用できません。後でお試しください。","10コインを受け取る","報酬受け取り済み"],"de":["Die Prüfung ist vorübergehend nicht verfügbar. Versuche es gleich erneut.","Diese Aufgabe ist vorübergehend nicht verfügbar. Versuche es später erneut.","10 Münzen erhalten","Belohnung erhalten"],"id":["Verifikasi sementara tidak tersedia. Coba lagi sebentar lagi.","Tugas ini sementara tidak tersedia. Coba lagi nanti.","Ambil 10 koin","Hadiah diterima"],"tr":["Doğrulama geçici olarak kullanılamıyor. Biraz sonra tekrar deneyin.","Bu görev geçici olarak kullanılamıyor. Daha sonra tekrar deneyin.","10 jeton al","Ödül alındı"]};
+  function renderChannelTask(){
+    const button=document.getElementById('claimChannelTask'),status=document.getElementById('channelTaskStatus');
+    if(!button||!status)return;
+    const t=activityText(),feedback=CHANNEL_TASK_FEEDBACK[lang]||CHANNEL_TASK_FEEDBACK.en;
+    button.setAttribute('aria-busy',String(channelTaskClaimPending||channelTaskStatusPending));
+    if(channelTaskClaimed){
+      button.disabled=true;button.textContent=feedback[3];
+      status.textContent=channelTaskNotice==='success'?t.taskSuccess:t.taskAlready;return;
+    }
+    if(!tg?.initData){button.disabled=true;button.textContent=t.checkTask;status.textContent=t.taskLogin;return;}
+    if(channelTaskClaimPending||channelTaskStatusPending){button.disabled=true;button.textContent=t.checking;status.textContent=t.checking;return;}
+    button.disabled=channelTaskNotice==='exhausted';
+    button.textContent=channelTaskJoined&&!channelTaskNotice?feedback[2]:t.checkTask;
+    if(channelTaskNotice==='configuration'||channelTaskNotice==='exhausted')status.textContent=feedback[1];
+    else if(channelTaskNotice==='unavailable')status.textContent=feedback[0];
+    else if(channelTaskNotice==='login')status.textContent=t.taskLogin;
+    else if(channelTaskNotice==='notJoined')status.textContent=t.joinFirst;
+    else status.textContent=channelTaskJoined?t.taskJoined:t.taskNotJoined;
+  }
+  function channelTaskErrorNotice(error){
+    if(error.code==='TASK_REWARD_EXHAUSTED')return 'exhausted';
+    if(error.code==='CHANNEL_TASK_CONFIGURATION')return 'configuration';
+    if(error.code==='CHANNEL_NOT_JOINED')return 'notJoined';
+    if(error.status===401)return 'login';
+    return 'unavailable';
+  }
+  async function channelTaskRequest(path){
+    // Keep the deadline active through JSON parsing, including a stalled response body.
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),30000);
+    try{
+      const response=await fetch(BACKEND+path,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({initData:tg?.initData||''}),signal:controller.signal
+      });
+      let data;
+      try{data=await response.json();}catch(error){const invalid=new Error('Task response unavailable');invalid.code='CHANNEL_CHECK_UNAVAILABLE';throw invalid;}
+      if(!response.ok){const error=new Error('Task request failed');error.code=data.code||'CHANNEL_CHECK_UNAVAILABLE';error.status=response.status;throw error;}
+      return data;
+    }finally{clearTimeout(timer);}
+  }
+  async function updateChannelTaskStatus(){
+    if(channelTaskClaimPending||channelTaskClaimed){renderChannelTask();return;}
+    const requestVersion=++channelTaskStatusVersion;
+    if(!tg?.initData){renderChannelTask();return;}
+    channelTaskStatusPending=true;renderChannelTask();
+    try{
+      const data=await channelTaskRequest('/api/tasks/channel/status');
+      if(requestVersion!==channelTaskStatusVersion||channelTaskClaimPending)return;
+      // Receiving an older false status must never undo a confirmed, one-time reward.
+      channelTaskClaimed=channelTaskClaimed||!!data.claimed;
+      channelTaskJoined=!!data.joined;channelTaskNotice='';
+    }catch(error){
+      if(requestVersion!==channelTaskStatusVersion||channelTaskClaimPending)return;
+      if(error.code==='TASK_ALREADY_CLAIMED')channelTaskClaimed=true;
+      else if(!channelTaskClaimed)channelTaskNotice=channelTaskErrorNotice(error);
+    }finally{
+      if(requestVersion===channelTaskStatusVersion&&!channelTaskClaimPending){channelTaskStatusPending=false;renderChannelTask();}
     }
   }
-
-  document.getElementById('openChannelTask').addEventListener('click', () => {
-    const url = 'https://t.me/Lordeuso';
-    if (tg?.openTelegramLink) tg.openTelegramLink(url); else window.open(url, '_blank', 'noopener');
+  document.getElementById('openChannelTask').addEventListener('click',()=>{
+    const url='https://t.me/Lordeuso';
+    if(tg?.openTelegramLink)tg.openTelegramLink(url);else window.open(url,'_blank','noopener');
   });
-  document.getElementById('claimChannelTask').addEventListener('click', async (event) => {
-    if (channelTaskClaimPending || channelTaskClaimed) return;
-    const button = event.currentTarget; const status = document.getElementById('channelTaskStatus'); const t = activityText();
-    if (!tg?.initData) { status.textContent = t.taskLogin; return; }
-    channelTaskClaimPending = true;
-    channelTaskStatusVersion++;
-    button.disabled = true; status.textContent = t.checking;
-    try {
-      const response = await libraryRequest('/api/tasks/channel/claim', {});
-      const data = await response.json();
-      if (typeof data.balance === 'number') setBalance(data.balance);
-      channelTaskClaimed = true; status.textContent = data.alreadyClaimed ? t.taskAlready : t.taskSuccess;
-      button.textContent = t.claimedTask || ACTIVITY_TEXT.en.claimedTask; activityLoaded = false; button.disabled = true;
-      if (!document.getElementById('historyView').hidden) loadActivityHistory(true);
-    } catch (error) {
-      status.textContent = error.code === 'CHANNEL_NOT_JOINED' ? t.joinFirst : (error.code === 'TASK_ALREADY_CLAIMED' ? t.taskAlready : t.taskError);
-      button.textContent = error.code === 'TASK_ALREADY_CLAIMED' ? (t.claimedTask || ACTIVITY_TEXT.en.claimedTask) : t.checkTask;
-      button.disabled = error.code === 'TASK_ALREADY_CLAIMED';
-      if (error.code === 'TASK_ALREADY_CLAIMED') channelTaskClaimed = true;
-    } finally { channelTaskClaimPending = false; }
+  document.getElementById('claimChannelTask').addEventListener('click',async()=>{
+    if(channelTaskClaimPending||channelTaskClaimed)return;
+    if(!tg?.initData){renderChannelTask();return;}
+    channelTaskClaimPending=true;channelTaskStatusPending=false;channelTaskStatusVersion++;
+    renderChannelTask();
+    try{
+      const data=await channelTaskRequest('/api/tasks/channel/claim');
+      if(typeof data.balance==='number')setBalance(data.balance);
+      channelTaskClaimed=true;channelTaskNotice=data.alreadyClaimed?'already':'success';activityLoaded=false;
+      if(!document.getElementById('historyView').hidden)loadActivityHistory(true);
+    }catch(error){
+      if(error.code==='TASK_ALREADY_CLAIMED'){channelTaskClaimed=true;channelTaskNotice='already';}
+      else if(!channelTaskClaimed){channelTaskNotice=channelTaskErrorNotice(error);if(error.code==='CHANNEL_NOT_JOINED')channelTaskJoined=false;}
+    }finally{channelTaskClaimPending=false;renderChannelTask();}
   });
 
   function switchMainView(view) {
@@ -4248,8 +4226,8 @@
       <strong style="color:var(--text)">Не хватает $?</strong><br>
       Сыграй в мини-игру «Найди пары» (нажми на баланс), купи $ за Telegram Stars, или спроси про промокод.<br><br>
       <strong style="color:var(--text)">Premium 👑</strong><br>
-      Доступны Standard, Luxury и Ultimate: скидки на генерацию, бонусы на баланс и больше картинок за раз.
-      Первый месяц: Standard 19 ⭐, Luxury 52 ⭐, Ultimate 229 ⭐; продление вручную — 29 ⭐, 79 ⭐ и 350 ⭐ соответственно. Кнопка 👑 в шапке.`,
+      Standard, Luxury и Ultimate дают скидки на генерацию и увеличивают размер партии. Standard начисляет 3 монеты в день; Luxury и Ultimate открывают быстрые стили и особые темы. Ultimate также создаёт набор из шести эмоций за 12 монет.
+      Первый месяц: Standard 21 ⭐, Luxury 65 ⭐, Ultimate 287 ⭐; продление вручную — 32 ⭐, 99 ⭐ и 438 ⭐ соответственно. Кнопка 👑 в шапке.`,
     en: `<strong style="color:var(--text)">How to create stickers:</strong><br>
       1. Describe your idea (or tap "🎲 Random idea")<br>
       2. Choose how many images to generate<br>
@@ -4267,8 +4245,8 @@
       <strong style="color:var(--text)">Out of $?</strong><br>
       Play "Match the pairs" (tap the balance), buy $ with Telegram Stars, or ask about a promo code.<br><br>
       <strong style="color:var(--text)">Premium 👑</strong><br>
-      Choose Standard, Luxury, or Ultimate for generation discounts, daily balance bonuses, and larger batches.
-      First month: Standard 19 ⭐, Luxury 52 ⭐, Ultimate 229 ⭐; manual renewals are 29 ⭐, 79 ⭐, and 350 ⭐. Tap the 👑 button in the header.`
+      Choose Standard, Luxury, or Ultimate for generation discounts and larger batches. Standard includes 3 daily coins; Luxury and Ultimate unlock quick styles and exclusive themes. Ultimate can also create six expressions for 12 coins.
+      First month: Standard 21 ⭐, Luxury 65 ⭐, Ultimate 287 ⭐; manual renewals are 32 ⭐, 99 ⭐, and 438 ⭐. Tap the 👑 button in the header.`
   };
 
   const HELP_AI_TEXT = {
@@ -4387,14 +4365,35 @@
   let premiumSelectionVersion = 0;
   let premiumOpenVersion = 0;
   let invoicePending = false;
-  let subPricing = { standard: { firstStars: 19, renewStars: 29 }, luxury: { firstStars: 52, renewStars: 79 }, ultimate: { firstStars: 229, renewStars: 350 }, firstPurchaseDone: false };
+  let subPricing = { standard: { firstStars: 21, renewStars: 32 }, luxury: { firstStars: 65, renewStars: 99 }, ultimate: { firstStars: 287, renewStars: 438 }, firstPurchaseDone: false };
   let coinPurchase = null;
   let coinStatusVersion = 0;
   const COIN_PREMIUM_TEXT = {"en":["Buy for","coins","30 days · Once every 3 months · 2.5× the regular Stars price","Available again on","Not enough coins","Confirm purchase","Cancel"],"ru":["Купить за","монет","30 дней · Раз в 3 месяца · В 2,5 раза дороже обычной цены в Stars","Снова доступно","Недостаточно монет","Подтвердить покупку","Отмена"],"es":["Comprar por","monedas","30 días · Una vez cada 3 meses · 2,5× el precio normal en Stars","Disponible de nuevo el","Monedas insuficientes","Confirmar compra","Cancelar"],"zh":["购买：","金币","30天 · 每3个月一次 · 常规Stars价格的2.5倍","再次可用日期","金币不足","确认购买","取消"],"hi":["खरीदें:","सिक्के","30 दिन · हर 3 महीने में एक बार · सामान्य Stars कीमत का 2.5 गुना","फिर उपलब्ध","पर्याप्त सिक्के नहीं","खरीद की पुष्टि करें","रद्द करें"],"ar":["شراء مقابل","عملة","30 يومًا · مرة كل 3 أشهر · 2.5 ضعف سعر Stars العادي","متاح مجددًا في","العملات غير كافية","تأكيد الشراء","إلغاء"],"pt":["Comprar por","moedas","30 dias · Uma vez a cada 3 meses · 2,5× o preço normal em Stars","Disponível novamente em","Moedas insuficientes","Confirmar compra","Cancelar"],"fr":["Acheter pour","pièces","30 jours · Une fois tous les 3 mois · 2,5× le prix normal en Stars","Disponible à nouveau le","Pièces insuffisantes","Confirmer l’achat","Annuler"],"ja":["購入：","コイン","30日間 · 3か月に1回 · 通常のStars価格の2.5倍","次回購入可能日","コインが足りません","購入を確認","キャンセル"],"de":["Kaufen für","Münzen","30 Tage · Einmal alle 3 Monate · 2,5× der reguläre Stars-Preis","Wieder verfügbar am","Nicht genug Münzen","Kauf bestätigen","Abbrechen"],"id":["Beli dengan","koin","30 hari · Sekali setiap 3 bulan · 2,5× harga Stars reguler","Tersedia kembali pada","Koin tidak cukup","Konfirmasi pembelian","Batal"],"tr":["Satın al:","jeton","30 gün · Her 3 ayda bir · Normal Stars fiyatının 2,5 katı","Tekrar kullanılabilir","Yetersiz jeton","Satın almayı onayla","İptal"]};
+  const COIN_PRICE_CHANGED_TEXT={"en":"The price has changed. Review the updated price and confirm again.","ru":"Цена изменилась. Проверь новую стоимость и подтверди покупку заново.","es":"El precio ha cambiado. Revisa el nuevo precio y confirma de nuevo.","zh":"价格已更新。请查看新价格并重新确认。","hi":"कीमत बदल गई है। नई कीमत देखकर फिर पुष्टि करें।","ar":"تغير السعر. راجع السعر الجديد وأكد الشراء مجددًا.","pt":"O preço mudou. Confira o novo valor e confirme novamente.","fr":"Le prix a changé. Vérifiez le nouveau prix et confirmez à nouveau.","ja":"価格が変更されました。新しい価格を確認して、もう一度確定してください。","de":"Der Preis hat sich geändert. Prüfe den neuen Preis und bestätige erneut.","id":"Harga berubah. Periksa harga baru dan konfirmasi lagi.","tr":"Fiyat değişti. Yeni fiyatı kontrol edip yeniden onaylayın."};
+  const FAST_BATCH_TEXT={"en":"Faster batches · no added pause between images","ru":"Быстрая партия · без искусственной паузы между картинками","es":"Lotes rápidos · sin pausa añadida entre imágenes","zh":"快速批量 · 图片之间不额外暂停","hi":"तेज़ बैच · चित्रों के बीच अतिरिक्त विराम नहीं","ar":"دفعات أسرع · دون توقف إضافي بين الصور","pt":"Lotes rápidos · sem pausa extra entre imagens","fr":"Lots rapides · sans pause ajoutée entre les images","ja":"高速バッチ · 画像間の追加待機なし","de":"Schnellere Stapel · ohne zusätzliche Bildpausen","id":"Batch lebih cepat · tanpa jeda tambahan antargambar","tr":"Hızlı toplu üretim · görseller arasında ek bekleme yok"};
+  async function refreshCoinSubscriptionQuote(){
+    const version=coinStatusVersion;
+    const response=await fetchWithTimeout(BACKEND+'/api/subscription/status',{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({initData:tg?.initData||''})
+    });
+    if(!response.ok)throw Error('Subscription status unavailable');
+    const data=await response.json();
+    if(version!==coinStatusVersion)return false;
+    coinPurchase=data.coinPurchase||null;
+    premiumState={active:data.active,expiresAt:data.expiresAt,tier:data.tier};
+    if(data.pricing){
+      subPricing={...subPricing,...data.pricing,standard:{...subPricing.standard,...data.pricing.standard},luxury:{...subPricing.luxury,...data.pricing.luxury},ultimate:{...subPricing.ultimate,...data.pricing.ultimate}};
+    }
+    if(data.perks&&data.tier)subPerksByTier[data.tier]=data.perks;
+    if(typeof data.balance==='number')setBalance(data.balance);
+    renderPremiumBadge();renderPremiumModal();return true;
+  }
   function renderCoinPremium() {
     const t = COIN_PREMIUM_TEXT[lang] || COIN_PREMIUM_TEXT.en;
     const button = document.getElementById('premiumCoinsBtn');
     const terms = document.getElementById('premiumCoinsTerms');
+    button.classList.toggle('is-luxury',selectedTier==='luxury');
+    button.classList.toggle('is-ultimate',selectedTier==='ultimate');
     const cost = coinPurchase?.prices?.[selectedTier];
     button.hidden = !Number.isInteger(cost);
     button.style.display = button.hidden ? 'none' : '';
@@ -4407,8 +4406,8 @@
   let ultimateBackendReady = false;
   let subPerksByTier = {
     standard: { maxImages: 6, costPerImage: 4, dailyBonus: 3 },
-    luxury: { maxImages: 10, costPerImage: 3, dailyBonus: 5 },
-    ultimate: { maxImages: 12, costPerImage: 2, dailyBonus: 12 },
+    luxury: { maxImages: 10, costPerImage: 3, dailyBonus: 0 },
+    ultimate: { maxImages: 12, costPerImage: 2, dailyBonus: 0 },
   };
 
   function setSelectedTier(tier) {
@@ -4420,7 +4419,9 @@
     document.getElementById('tierBtnUltimate').classList.toggle('active', tier === 'ultimate');
     document.querySelector('.premium-hero').classList.toggle('is-luxury', tier === 'luxury');
     document.querySelector('.premium-hero').classList.toggle('is-ultimate', tier === 'ultimate');
-    document.getElementById('premiumHeroIcon').textContent = tier === 'ultimate' ? '💎' : tier === 'luxury' ? '👑' : '🔴';
+    const heroIcon=document.getElementById('premiumHeroIcon');
+    if(tier==='standard')heroIcon.innerHTML="<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m12 3 9 9-9 9-9-9 9-9Z\"/><path d=\"m8 12 3 3 5-6\"/></svg>";
+    else heroIcon.textContent=tier==='ultimate'?'💎':'👑';
     renderPremiumModal();
   }
 
@@ -4430,33 +4431,28 @@
     const studio=studioText();
     if (tier === 'luxury') {
       return [
-        { ico: '🚀', text: s.perkMaxPriority, luxe: true },
+        { ico: '⚡', text: FAST_BATCH_TEXT[lang]||FAST_BATCH_TEXT.en, luxe: true },
         { ico: '💎', text: s.perkCostPerImage(p.costPerImage), luxe: true },
         { ico: '🖼️', text: s.perkMaxImages(p.maxImages), luxe: true },
-        { ico: '🎁', text: s.perkDailyBonus(p.dailyBonus), luxe: true },
         { ico: '✨', text: s.perkLuxuryStyle, luxe: true },
         { ico: '👑', text: s.perkLuxuryBadge, luxe: true },
         { ico: '🎨', text: 'Gold Atelier', luxe: true },
-        { ico: '✦', text: studio[10]+': 8', luxe: true },
-        { ico: '★', text: studio[9], luxe: true },
+        { ico: '✦', text: studio[10], luxe: true },
       ];
     }
     if (tier === 'ultimate') {
       return [
-        { ico: '🚀', text: s.perkMaxPriority, luxe: true },
+        { ico: '⚡', text: FAST_BATCH_TEXT[lang]||FAST_BATCH_TEXT.en, luxe: true },
         { ico: '💎', text: s.perkCostPerImage(p.costPerImage), luxe: true },
         { ico: '🖼️', text: s.perkMaxImages(p.maxImages), luxe: true },
-        { ico: '🎁', text: s.perkDailyBonus(p.dailyBonus), luxe: true },
         { ico: '✨', text: s.perkUltimateStyle, luxe: true },
         { ico: '👑', text: s.perkUltimateBadge, luxe: true },
         { ico: '🎨', text: 'Gold Atelier + Aurora Studio', luxe: true },
-        { ico: '✦', text: studio[10]+': 24', luxe: true },
-        { ico: '★', text: studio[9], luxe: true },
-        { ico: '✨', text: studio[11], luxe: true },
+        { ico: '✦', text: studio[10], luxe: true },
+        { ico: '☺', text: studio[11]+' · '+studio[9], luxe: true },
       ];
     }
     return [
-      { ico: '⚡', text: s.perkPriority },
       { ico: '💵', text: s.perkCostPerImage(p.costPerImage) },
       { ico: '🖼️', text: s.perkMaxImages(p.maxImages) },
       { ico: '🎁', text: s.perkDailyBonus(p.dailyBonus) },
@@ -4635,12 +4631,21 @@
       coinStatusVersion++;
       const response = await fetchWithTimeout(BACKEND + '/api/subscription/buy-coins', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ initData: tg?.initData || '', tier }),
+        body: JSON.stringify({ initData: tg?.initData || '', tier, expectedPrice: cost }),
       });
       const result = await response.json();
       if (result.nextAvailableAt) coinPurchase.nextAvailableAt = result.nextAvailableAt;
       if (typeof result.balance === 'number') setBalance(result.balance);
-      if (!response.ok || !result.applied) {
+      if(!response.ok||!result.applied){
+        if(response.status===409&&(result.code==='PRICE_CHANGED'||result.code==='COIN_SUBSCRIPTION_PRICE_CHANGED')){
+          const notice=COIN_PRICE_CHANGED_TEXT[lang]||COIN_PRICE_CHANGED_TEXT.en;
+          try{
+            if(await refreshCoinSubscriptionQuote()){
+              document.getElementById('premiumRequestState').textContent=notice;showToast(notice);
+            }
+          }catch(error){coinPurchase=null;document.getElementById('premiumRequestState').textContent=experienceText()[4];showToast(STR[lang].premiumFail);}
+          return;
+        }
         if (result.code === 'INSUFFICIENT_BALANCE') showToast(t[4]);
         else if (result.code !== 'COIN_SUBSCRIPTION_COOLDOWN') showToast(STR[lang].premiumFail);
         return;
