@@ -8,7 +8,7 @@ const start = source.indexOf('async function handleChatMessage(message)');
 const end = source.indexOf('\nconst FALLBACK_HELP_TEXT', start);
 assert.ok(start >= 0 && end > start);
 
-function fixture({ used = 0, balance = 100, produced = 4, paid = false, fail = false } = {}) {
+function fixture({ used = 0, balance = 100, produced = 4, paid = false, fail = false, banned = false } = {}) {
   const state = { used, balance, requested: [], deltas: [], messages: [] };
   const context = vm.createContext({
     process: { env: {} }, console, Date, Map,
@@ -17,6 +17,7 @@ function fixture({ used = 0, balance = 100, produced = 4, paid = false, fail = f
     getOrCreateSubscription: async () => ({}),
     tierConfig: () => paid ? { discountPerImage: 1 } : null,
     isOwnerUser: () => false,
+    isAccountBanned: async () => banned,
     reserveFreeDailyImageSlots: async (_user, count) => {
       const slots = Array.from({ length: Math.min(count, 4 - state.used) }, (_, n) => `slot-${state.used + n}`);
       state.used += slots.length;
@@ -40,6 +41,11 @@ function fixture({ used = 0, balance = 100, produced = 4, paid = false, fail = f
 }
 
 (async () => {
+  const blocked = fixture({ banned: true });
+  await blocked.run();
+  assert.equal(blocked.state.balance, 100);
+  assert.deepEqual(blocked.state.requested, []);
+  assert.equal(blocked.state.messages.length, 1);
   const remaining = fixture({ used: 2 });
   await remaining.run();
   assert.deepEqual(remaining.state.requested, [2]);
@@ -77,4 +83,3 @@ function fixture({ used = 0, balance = 100, produced = 4, paid = false, fail = f
   assert.equal(premium.state.balance, 84);
   console.log('PASS: shared chat quota, partial/full/exception refunds, insufficient funds, paid plan bypass. No external requests.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
-
