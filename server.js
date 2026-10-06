@@ -382,9 +382,9 @@ const LUXURY_PROMPT_SUFFIX =
 const STANDARD_PROMPT_SUFFIX =
   ", clean crisp sticker finish, soft shading, polished look";
 
-// Introductory prices are about 35% below renewal. Daily credits are budgeted
-// at about 30% of the nominal Star price (10 balance credits = 1 Star); this is
-// a benefit budget, not a profit guarantee because provider costs and net Stars vary.
+// Introductory prices are about 35% below renewal. Daily credits are fixed
+// benefits, separate from the 8 credits per Star top-up rate. They do not
+// guarantee a profit margin because provider costs and net Stars vary.
 const TIERS = {
   standard: {
     label: "Standard",
@@ -402,7 +402,7 @@ const TIERS = {
     renewStars: 79,
     discountPerImage: 2,
     maxImages: 10,
-    dailyBonus: 8,
+    dailyBonus: 5,
     generationPauseMs: 0,
     promptSuffix: LUXURY_PROMPT_SUFFIX,
   },
@@ -412,7 +412,7 @@ const TIERS = {
     renewStars: 350,
     discountPerImage: 3,
     maxImages: 12,
-    dailyBonus: 35,
+    dailyBonus: 12,
     generationPauseMs: 0,
     promptSuffix: ", exclusive Ultimate sticker art, vivid jewel-tone colors, cinematic rim lighting, crisp die-cut outline, premium collectible finish",
   },
@@ -540,6 +540,9 @@ app.post("/api/help/ask", async (req, res) => {
     "You are the concise, friendly help assistant for Sticker Bot, a Telegram sticker-creation mini app.",
     "Answer only questions about using the app, generating stickers, sticker packs, balance, and the visible subscription terms.",
     "Do not claim you changed a user's account or payment. Never ask for passwords, bot tokens, or secret keys.",
+    `Current 30-day subscription terms: ${Object.entries(TIERS).map(([tier, cfg]) => `${cfg.label}: first month ${cfg.firstStars} Stars, manual renewal ${cfg.renewStars} Stars, ${GEN_COST_PER_IMAGE - cfg.discountPerImage} balance credits per image, up to ${cfg.maxImages} images per batch, ${cfg.dailyBonus} daily balance credits`).join("; ")}.`,
+    "Luxury adds the Gold Atelier interface theme, up to 8 saved generation recipes, and favorite packs. Ultimate includes these benefits with up to 24 recipes, the Aurora Studio interface theme, and an art/mood prompt builder.",
+    "Studio works in the mini app. Recipes and favorites are stored on this device/browser, do not sync between devices, and may be lost if browser storage is cleared. Recipes save ideas and batch sizes. The art/mood builder composes editable prompt text; it does not automatically generate images or add AI capability.",
     "Premium can also be purchased with coins: Standard 580, Luxury 1580, Ultimate 7000, for 30 days. One coin purchase per account every three calendar months across all tiers; Stars purchases have no such cooldown. Coin prices use the regular Stars renewal price times 8 coins per Star times 2.5, without an introductory discount.",
     `Reply in ${language}, in at most 5 short sentences. If unsure, say so and suggest the in-app tutorial or contacting the bot owner.`,
     `User question: ${question}`,
@@ -1433,7 +1436,8 @@ const HELP_COMMANDS_TEXT =
   "💰 <b>Баланс</b>\n" +
   "У новых — 15 $ бесплатно. Не хватает? Купи $ за Telegram Stars в приложении, либо спроси про промокод.\n\n" +
   "🔴 <b>Premium (Standard / Luxury / Ultimate)</b>\n" +
-  "Приоритет генерации, скидки, бонусы на баланс и больше картинок за раз. Первый месяц: Standard 19⭐, Luxury 52⭐, Ultimate 229⭐; продление вручную: 29⭐, 79⭐ и 350⭐ соответственно. Кнопка Premium — в приложении.\n\n" +
+  "Приоритет генерации, скидки, бонусы на баланс и больше картинок за раз. Первый месяц: Standard 19⭐, Luxury 52⭐, Ultimate 229⭐; продление вручную: 29⭐, 79⭐ и 350⭐ соответственно. Ежедневный бонус: Standard +3 монеты, Luxury +5, Ultimate +12. Кнопка Premium — в приложении.\n" +
+  "Luxury: тема Gold Atelier, до 8 шаблонов генерации и избранные наборы. Ultimate: эти возможности, до 24 шаблонов, тема Aurora Studio и конструктор описания по стилю и настроению. Шаблоны и избранное сохраняются на этом устройстве.\n\n" +
   "🔍 <b>Где сохранённые стикеры</b>\n" +
   "Иконка стикеров в поле ввода сообщения → «Мои наборы». Управлять паками (переименовать, удалить) — через официального бота @Stickers.\n\n" +
   "❓Любой другой вопрос — просто напиши текстом, отвечу.";
@@ -1445,9 +1449,12 @@ const SYSTEM_CONTEXT = `Ты — дружелюбный помощник Telegra
 "/save название пака" сохраняет их как стикерпак. Стоимость генерации — 5 $ за картинку по умолчанию.
 Новым пользователям выдаётся 15 $ бесплатно. Есть три уровня Premium-подписки через Telegram Stars:
 Standard (19⭐ первый месяц, затем 29⭐) даёт 4 $ за картинку, до 6 картинок за раз и +3 $ в день;
-Luxury (52⭐ первый месяц, затем 79⭐) даёт 3 $ за картинку, до 10 картинок за раз и +8 $ в день;
+Luxury (52⭐ первый месяц, затем 79⭐) даёт 3 $ за картинку, до 10 картинок за раз и +5 $ в день;
 Ultimate (229⭐ первый месяц, затем 350⭐) даёт 2 $ за картинку, до 12 картинок за раз,
-+35 $ в день, максимальный приоритет и эксклюзивный стиль стикеров. Подписки вручную продлеваются раз в 30 дней.
++12 $ в день, максимальный приоритет и эксклюзивный стиль стикеров. Подписки вручную продлеваются раз в 30 дней.
+В мини-приложении Luxury даёт тему Gold Atelier, до 8 шаблонов генерации и избранные наборы.
+Ultimate включает эти возможности, до 24 шаблонов, тему Aurora Studio и конструктор описания по стилю и настроению.
+Шаблон сохраняет идею и количество стикеров. Шаблоны и избранное хранятся на текущем устройстве/в браузере, не синхронизируются и могут исчезнуть при очистке данных. Темы меняют интерфейс. Конструктор составляет редактируемый текст и не запускает генерацию автоматически.
 Подписки также можно купить за монеты в приложении: Standard 580, Luxury 1580, Ultimate 7000 на 30 дней. Покупка за монеты доступна раз в три календарных месяца на аккаунт для всех тарифов вместе; ограничение не относится к Stars.
 После сохранения стикеры сразу появляются в личном списке стикерпаков в
 Telegram: их можно найти через встроенный поиск стикеров в любом чате (иконка стикеров в поле ввода
@@ -1740,4 +1747,3 @@ app.listen(PORT, async () => {
     console.error("Telegram webhook registration failed:", error.message);
   }
 });
-
