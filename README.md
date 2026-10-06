@@ -38,8 +38,10 @@ npm start
 
 - Миграция `supabase/migrations/20261004120000_account_activity.sql` создаёт закрытый журнал событий. Клиенты не получают прямого доступа к таблице; сервер отдаёт только историю пользователя с валидной подписью Telegram.
 - `POST /api/history` возвращает последние 100 операций. История начинает накапливаться после установки этой версии и не может восстановить старые события, которых раньше не записывали.
-- `CHANNEL_TASK_CHAT` задаёт канал для задания. Бот должен быть администратором канала, чтобы Telegram позволил надёжно проверить подписку.
+- Для текущего одноразового задания используется `@Lordeuso`; `CHANNEL_TASK_CHAT` должен указывать этот канал. Бот должен быть администратором канала, чтобы Telegram позволил надёжно проверить подписку. Для переноса задания на другой канал нужна согласованная серверная миграция его идентификатора, а не только замена переменной.
 - `POST /api/tasks/channel/status` сообщает статус, а `POST /api/tasks/channel/claim` выдаёт 10 монет один раз на аккаунт после проверки подписки. Повторные запросы не начисляют награду второй раз.
+- Перед выпуском этой версии примените `20261006161936_atomic_channel_task_reward.sql`. RPC `account_claim_channel_task` сохраняет подтверждение, баланс и историю одной транзакцией; потеря HTTP-ответа не удаляет уже выполненную операцию. Ранее сохранённые подтверждения остаются авторитетными.
+- Проверка Telegram имеет общий предел 10 секунд, ограниченные повторы при временном сбое и один короткий повтор после ещё не отобразившегося вступления. Недоступная проверка возвращает `CHANNEL_CHECK_UNAVAILABLE`, неверная настройка/отсутствие прав администратора — `CHANNEL_TASK_CONFIGURATION`, подтверждённое отсутствие подписки — `CHANNEL_NOT_JOINED`. Незнакомый статус или ошибка API не дают награду.
 - В интерфейсе оставлена спокойная область для будущих партнёрских и рекламных заданий. Рекламная сеть и оплачиваемая реклама пока не подключены.
 
 ## Подключение к фронтенду
@@ -96,10 +98,12 @@ Saved recipes and favorite-pack controls are removed from the frontend. Premium 
 `POST /api/generate` continues to accept `initData`, `prompt`, and `count`. It additionally accepts:
 
 - `style`: `vector` (default), `clay3d`, `paper`, or `anime`. Non-vector styles require active Luxury or Ultimate. The server uses one exclusive art-style suffix, avoiding the previous forced vector clause overriding a 3D-look request.
-- `preset`: `none` (default) or `emotions`. Emotions require active Ultimate and exactly `count: 6`. Six normal paid image generations use one idea with happy, sad, wow, love, angry, and wink variations. Successful response images contain the corresponding `emotion` key. Six successes cost 12 coins; partial/total failures use the existing refund rules. No additional image requests are added beyond the purchased count.
+- `preset`: `none` (default) or `emotions`. Emotions require active Ultimate and exactly `count: 6`. Six normal paid image generations use one idea with happy, sad, wow, love, angry, and wink variations. Successful response images contain the corresponding `emotion` key. Six successes cost 12 coins; partial/total failures use the existing refund rules. The preset adds no extra sticker generations beyond the selected six; normal provider retries/fallback can still occur.
 
 Unknown values return 400; insufficient tiers return 403; preset-count mismatch returns 400 before any quota reservation or debit. Invalid/non-string prompts also return 400. Chat `/create` keeps its existing four-image vector generation flow and subscription discount.
 
 Run `node scripts/verify-premium-express.cjs` for isolated pricing/quote, entitlement, art-prompt, emotion-set/refund, and old invoice checks. It makes no real external requests. Existing `verify-atomic-accounting.cjs` and `verify-chat-generation.cjs` cover payment retry and shared chat quota/refunds.
+
+Run `node scripts/verify-taskcheck.cjs` for isolated channel membership, admin configuration, retry, duplicate/ambiguous claim and reserved-promo checks. `node scripts/verify-image-provider.cjs` checks a shared 45-second budget per sticker, safe diagnostics, no retries on HTTP 402, and at most one short retry on HTTP 429/5xx. Long `Retry-After` values fail promptly and use normal refunds; the server does not retry before the provider's specified time. All checks use fixtures, without Telegram claims, AI usage, or real payments.
 
 These produce static raster stickers, including a 3D-render look rather than actual 3D geometry or animation. Independent image generations can vary character details; an emotion set is not a guarantee of exact visual identity.
