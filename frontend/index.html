@@ -1384,7 +1384,7 @@
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsHeading">
     <button class="modal-close" id="settingsClose" type="button" aria-label="Close">✕</button>
     <h3 id="settingsHeading" style="margin:0 36px 4px 0;">Настройки</h3>
-    <p class="modal-sub" id="settingsHint">Настройки сохраняются на этом устройстве.</p>
+    <p class="modal-sub" id="settingsHint">Настройки сохраняются на этом устройстве.</p><button class="game-close-btn" id="adminSettingsBtn" type="button" style="display:none;">Owner controls</button>
     <div class="settings-field">
       <label id="settingsLanguageLabel" for="languageSelect">Язык приложения</label>
       <select class="settings-select" id="languageSelect">
@@ -1489,6 +1489,18 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="adminModal"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="adminHeading" style="max-height:85dvh;overflow:auto;">
+<button class="modal-close" id="adminClose" type="button" aria-label="Close">✕</button>
+<h3 id="adminHeading">Owner controls</h3><p class="modal-sub" id="adminHint">Only your verified Telegram account can use these actions.</p>
+<div class="settings-field"><label id="adminTargetLabel" for="adminTarget">Telegram user ID</label><input class="settings-select" id="adminTarget" inputmode="numeric" autocomplete="off" maxlength="16"></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;"><button class="game-close-btn" id="adminMe" type="button">My account</button><button class="game-close-btn" id="adminUsers" type="button">Recent users</button><button class="game-close-btn" id="adminInspect" type="button">Inspect</button></div>
+<div id="adminUserList" style="display:flex;flex-wrap:wrap;gap:6px;max-height:120px;overflow:auto;"></div>
+<div class="settings-field"><label id="adminPlanLabel" for="adminTier">Subscription</label><select class="settings-select" id="adminTier"><option value="standard">Standard</option><option value="luxury">Luxury</option><option value="ultimate">Ultimate</option></select></div>
+<div class="settings-field"><label id="adminDaysLabel" for="adminDays">Days</label><input class="settings-select" id="adminDays" type="number" value="30" min="1" max="3650"></div>
+<div class="settings-field"><label id="adminBalanceLabel" for="adminAmount">Coin balance</label><input class="settings-select" id="adminAmount" type="number" value="0" min="0" max="2147483647"></div>
+<div class="settings-field"><label id="adminReasonLabel" for="adminReason">Note (optional)</label><input class="settings-select" id="adminReason" maxlength="300"></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0;"><button class="game-start-btn" style="width:auto;flex:1;" id="adminGrant" type="button">Grant plan</button><button class="game-close-btn" id="adminRevoke" type="button">Revoke plan</button><button class="game-close-btn" id="adminSet" type="button">Set coins</button><button class="game-close-btn" id="adminBan" type="button">Ban</button><button class="game-close-btn" id="adminUnban" type="button">Unban</button></div>
+<p id="adminStatus" role="status" aria-live="polite" style="white-space:pre-wrap;overflow-wrap:anywhere;"></p></div></div>
 <script>
   const tg = window.Telegram?.WebApp;
   if (tg) { tg.ready(); tg.expand(); }
@@ -3264,6 +3276,7 @@
   });
 
   let isOwner = false;
+  let accountBanned = false;
   async function syncBalanceFromServer(retriesLeft = 3) {
     if (!tg?.initData) return;
     try {
@@ -3272,7 +3285,8 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ initData: tg.initData })
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) { const denied=await res.json().catch(()=>({})); if(denied.code==='ACCOUNT_BANNED'){accountBanned=true;isOwner=false;updateOwnerControls();renderBalance();return;} throw new Error('Account fetch failed'); }
+      accountBanned=false;
       const data = await res.json();
       if (typeof data.balance === 'number' && !Number.isNaN(data.balance)) {
         setBalance(data.balance);
@@ -3322,6 +3336,7 @@
     document.getElementById('balanceNum').textContent = b;
     document.getElementById('hintBalance').textContent = s.balance + b;
     const btn = document.getElementById('generateBtn');
+    if(accountBanned){btn.disabled=true;document.getElementById('genBtnText').textContent=lang==='ru'?'Аккаунт заблокирован':'Account restricted';return;}
     if(generationBusy){btn.disabled=true;document.getElementById('genBtnText').textContent=s.generating;return;}
     if (freeDailyLimitApplies() && freeDailyState.remaining === 0) {
       btn.classList.add('insufficient');
@@ -3344,30 +3359,30 @@
     const btn = document.getElementById('ownerEditBtn');
     if (!btn) return;
     btn.style.display = isOwner ? 'flex' : 'none';
+    btn.title=lang==='ru'?'Панель владельца':'Owner controls';btn.setAttribute('aria-label',btn.title);
+    document.getElementById('adminSettingsBtn').style.display=isOwner?'block':'none';
+    document.getElementById('adminSettingsBtn').textContent=btn.title;
   }
 
-  document.getElementById('ownerEditBtn').addEventListener('click', async () => {
-    const current = getBalance();
-    const input = prompt(lang === 'ru' ? 'Установить баланс (только для владельца):' : 'Set balance (owner only):', String(current));
-    if (input === null) return;
-    const amount = parseInt(input, 10);
-    if (!Number.isFinite(amount) || amount < 0) {
-      alert(lang === 'ru' ? 'Введи неотрицательное число' : 'Enter a non-negative number');
-      return;
+  let adminBusy=false,adminOwnerId=null,adminPending=null;
+  const adminStatus=document.getElementById('adminStatus');
+  function adminMessage(ru,en){return lang==='ru'?ru:en;}
+  function openAdmin(){if(!isOwner)return;const labels={adminHeading:['Панель владельца','Owner controls'],adminHint:['Действия доступны только владельцу и сохраняются в журнале.','Owner-only actions are recorded in the audit log.'],adminTargetLabel:['Telegram ID пользователя','Telegram user ID'],adminPlanLabel:['Подписка','Subscription'],adminDaysLabel:['Количество дней','Days'],adminBalanceLabel:['Баланс монет','Coin balance'],adminReasonLabel:['Примечание (необязательно)','Note (optional)'],adminMe:['Мой аккаунт','My account'],adminUsers:['Последние пользователи','Recent users'],adminInspect:['Проверить','Inspect'],adminGrant:['Выдать подписку','Grant plan'],adminRevoke:['Снять подписку','Revoke plan'],adminSet:['Задать баланс','Set coins'],adminBan:['Заблокировать','Ban'],adminUnban:['Разблокировать','Unban']};for(const[id,text]of Object.entries(labels))document.getElementById(id).textContent=text[lang==='ru'?0:1];openModal(document.getElementById('adminModal'));}
+  document.getElementById('ownerEditBtn').addEventListener('click',openAdmin);
+  document.getElementById('adminSettingsBtn').addEventListener('click',()=>{closeModal(settingsModal);openAdmin();});
+  document.getElementById('adminClose').addEventListener('click',()=>closeModal(document.getElementById('adminModal')));
+  async function adminRequest(path,body){const r=await fetchWithTimeout(BACKEND+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,initData:tg?.initData||''})});const data=await r.json();if(!r.ok){const e=new Error(data.error||'Action not confirmed');e.status=r.status;throw e;}return data;}
+  function adminLock(value){adminBusy=value;document.querySelectorAll('#adminModal button:not(#adminClose)').forEach(b=>b.disabled=value);}
+  async function adminUsers(){if(!isOwner||adminBusy)return;adminLock(true);try{const data=await adminRequest('/api/admin/users',{});adminOwnerId=data.ownerUserId;const list=document.getElementById('adminUserList');list.replaceChildren();for(const user of data.users){const b=document.createElement('button');b.type='button';b.className='game-close-btn';b.textContent=String(user.user_id)+' · '+user.balance;b.addEventListener('click',()=>{document.getElementById('adminTarget').value=String(user.user_id);adminAction('inspect');});list.appendChild(b);}if(!list.children.length)adminStatus.textContent=adminMessage('Пользователей пока нет.','No users yet.');}catch{adminStatus.textContent=adminMessage('Не удалось загрузить пользователей.','Could not load users.');}finally{adminLock(false);}}
+  document.getElementById('adminUsers').addEventListener('click',adminUsers);
+  document.getElementById('adminMe').addEventListener('click',async()=>{if(adminBusy)return;if(!adminOwnerId)await adminUsers();if(adminOwnerId){document.getElementById('adminTarget').value=String(adminOwnerId);adminAction('inspect');}});
+  async function adminAction(action){if(!isOwner||adminBusy)return;const targetUserId=Number(document.getElementById('adminTarget').value);if(!Number.isSafeInteger(targetUserId)||targetUserId<=0){adminStatus.textContent=adminMessage('Введи корректный Telegram ID.','Enter a valid Telegram user ID.');return;}
+    const payload={targetUserId,action};if(action!=='inspect'){payload.reason=document.getElementById('adminReason').value.trim();if(action==='grant-plan'){payload.tier=document.getElementById('adminTier').value;payload.days=Number(document.getElementById('adminDays').value);if(!Number.isInteger(payload.days)||payload.days<1||payload.days>3650){adminStatus.textContent=adminMessage('Срок: от 1 до 3650 дней.','Days must be between 1 and 3650.');return;}}if(action==='set-balance'){payload.amount=Number(document.getElementById('adminAmount').value);if(!Number.isInteger(payload.amount)||payload.amount<0||payload.amount>2147483647){adminStatus.textContent=adminMessage('Некорректный баланс.','Invalid balance.');return;}}
+      if(!confirm(adminMessage('Применить действие к Telegram ID ','Apply action to Telegram ID ')+targetUserId+'?'))return;
+      const fingerprint=JSON.stringify(payload);if(!adminPending||adminPending.fingerprint!==fingerprint)adminPending={fingerprint,requestId:crypto.randomUUID()};payload.requestId=adminPending.requestId;
     }
-    try {
-      const res = await fetch(`${BACKEND}/api/balance/set`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount, initData: tg?.initData || '' })
-      });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      setBalance(data.balance);
-    } catch (e) {
-      alert(lang === 'ru' ? 'Не получилось изменить баланс' : 'Could not update balance');
-    }
-  });
+    adminLock(true);adminStatus.textContent=adminMessage('Обработка…','Processing…');try{const data=await adminRequest('/api/admin/action',payload);if(action==='inspect'){const sub=data.subscription;adminStatus.textContent=adminMessage('Баланс: ','Balance: ')+data.balance+'\n'+adminMessage('Подписка: ','Plan: ')+(sub?.active&&new Date(sub.expires_at)>new Date()?sub.tier:'Free')+'\n'+(data.banned?adminMessage('Заблокирован','Banned'):adminMessage('Доступ открыт','Access allowed'))+(data.reason?'\n'+data.reason:'')+'\n'+(data.audit||[]).map(e=>new Date(e.created_at).toLocaleDateString()+' · '+e.action).join('\n');document.getElementById('adminAmount').value=data.balance;}else{adminPending=null;adminStatus.textContent=adminMessage('Готово. Действие сохранено в журнале.','Done. Action recorded in the audit log.');await syncBalanceFromServer();}}catch(e){if(e.status===400||e.status===403)adminPending=null;adminStatus.textContent=adminMessage('Действие не подтверждено. Проверь пользователя; повтор с теми же параметрами не применит его дважды.','Action not confirmed. Inspect the user; retrying identical parameters will not apply it twice.');}finally{adminLock(false);}}
+  for(const[id,action]of Object.entries({adminInspect:'inspect',adminGrant:'grant-plan',adminRevoke:'revoke-plan',adminSet:'set-balance',adminBan:'ban',adminUnban:'unban'}))document.getElementById(id).addEventListener('click',()=>adminAction(action));
 
   // ---------- Generation ----------
   const generateBtn = document.getElementById('generateBtn');

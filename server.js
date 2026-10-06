@@ -8,6 +8,7 @@ import "dotenv/config";
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
+app.use("/api", accountAccessGuard);
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET;
@@ -456,9 +457,85 @@ app.post("/api/balance/set", async (req, res) => {
 });
 
 function isOwnerUser(userId) {
-  const ownerId = process.env.OWNER_TELEGRAM_ID ? Number(process.env.OWNER_TELEGRAM_ID) : null;
-  return ownerId !== null && Number(userId) === ownerId;
+  const ownerId = Number(process.env.OWNER_TELEGRAM_ID);
+  return Number.isSafeInteger(ownerId) && ownerId > 0 && Number(userId) === ownerId;
 }
+
+console.log(isOwnerUser(Number(process.env.OWNER_TELEGRAM_ID)) ? "[admin] owner access configured" : "[admin] owner not configured");
+const moderationCache = new Map();
+async function isAccountBanned(userId) {
+  if (isOwnerUser(userId)) return false;
+  const cached = moderationCache.get(userId);
+  if (cached && cached.expiresAt > Date.now()) return cached.banned;
+  const rows = await supabaseRequest(`app_user_moderation?user_id=eq.${userId}&select=banned`);
+  const banned = rows?.[0]?.banned === true;
+  if (moderationCache.size >= 5000) moderationCache.delete(moderationCache.keys().next().value);
+  moderationCache.set(userId, { banned, expiresAt: Date.now() + 5000 });
+  return banned;
+}
+// Register before protected routes below; earlier balance/task routes are also
+// guarded by the initial middleware delegating to this hoisted helper.
+async function accountAccessGuard(req, res, next) {
+  const userId = extractUserId(req.body?.initData);
+  if (!userId) return next(); // Each endpoint still authenticates its own request.
+  try {
+    if (await isAccountBanned(userId)) return res.status(403).json({ error: "account banned", code: "ACCOUNT_BANNED" });
+    return next();
+  } catch {
+    return res.status(503).json({ error: "account access check unavailable", code: "ACCOUNT_CHECK_UNAVAILABLE" });
+  }
+}
+app.post("/api/admin/users", async (req, res) => {
+  const actor = extractUserId(req.body.initData);
+  if (!actor) return res.status(400).json({ error: "Telegram authentication required" });
+  if (!isOwnerUser(actor)) return res.status(403).json({ error: "forbidden" });
+  try {
+    const users = await supabaseRequest("balances?select=user_id,balance&order=user_id.desc&limit=30");
+    return res.json({ users: users || [], ownerUserId: actor });
+  } catch { return res.status(503).json({ error: "admin data unavailable" }); }
+});
+app.post("/api/admin/action", async (req, res) => {
+  const actor = extractUserId(req.body.initData);
+  if (!actor) return res.status(400).json({ error: "Telegram authentication required" });
+  if (!isOwnerUser(actor)) return res.status(403).json({ error: "forbidden" });
+  const target = Number(req.body.targetUserId);
+  const action = req.body.action;
+  if (!Number.isSafeInteger(target) || target <= 0) return res.status(400).json({ error: "invalid target ID" });
+  if (action === "ban" && isOwnerUser(target)) return res.status(400).json({ error: "owner cannot be banned" });
+  try {
+    if (action === "inspect") {
+      const [balances, subscriptions, moderation, audit] = await Promise.all([
+        supabaseRequest(`balances?user_id=eq.${target}&select=balance`),
+        supabaseRequest(`subscriptions?user_id=eq.${target}&select=active,tier,expires_at`),
+        supabaseRequest(`app_user_moderation?user_id=eq.${target}&select=banned,reason`),
+        supabaseRequest(`app_admin_audit?target_id=eq.${target}&select=action,created_at&order=created_at.desc&limit=10`),
+      ]);
+      return res.json({ ok: true, targetUserId: target, exists: !!balances?.length,
+        balance: balances?.[0]?.balance ?? 15, subscription: subscriptions?.[0] || null,
+        banned: moderation?.[0]?.banned === true, reason: moderation?.[0]?.reason || "", audit: audit || [] });
+    }
+    if (!["set-balance", "grant-plan", "revoke-plan", "ban", "unban"].includes(action)) return res.status(400).json({ error: "invalid admin action" });
+    const amount = action === "set-balance" ? req.body.amount : null;
+    const tier = action === "grant-plan" ? req.body.tier : null;
+    const days = action === "grant-plan" ? req.body.days : null;
+    const reason = req.body.reason || "";
+    if (typeof req.body.requestId !== "string" || !/^[A-Za-z0-9-]{16,64}$/.test(req.body.requestId) ||
+      typeof reason !== "string" || reason.length > 300 ||
+      (action === "set-balance" && (!Number.isInteger(amount) || amount < 0 || amount > 2147483647)) ||
+      (action === "grant-plan" && (!["standard", "luxury", "ultimate"].includes(tier) || !Number.isInteger(days) || days < 1 || days > 3650))) {
+      return res.status(400).json({ error: "invalid admin parameters" });
+    }
+    const result = await supabaseRequest("rpc/account_admin_action", { method: "POST", body: JSON.stringify({
+      p_actor: actor, p_target: target, p_action: action, p_request_key: req.body.requestId,
+      p_amount: amount, p_tier: tier, p_days: days, p_reason: reason,
+    }) });
+    if (result?.ok !== true) throw new Error("invalid admin response");
+    moderationCache.delete(target);
+    return res.json(result);
+  } catch (err) {
+    return res.status(err.code === "22023" ? 400 : 503).json({ error: "admin action not confirmed; refresh and retry the same request" });
+  }
+});
 
 // ---------- Premium-подписка через Telegram Stars: Standard, Luxury и Ultimate ----------
 const SUBSCRIPTION_DURATION_DAYS = 30;
@@ -1734,6 +1811,10 @@ async function handleChatMessage(message) {
 
   const createMatch = text.match(/^\/(create|generate)\s+([\s\S]+)$/i);
   if (createMatch) {
+    if (await isAccountBanned(fromId)) {
+      await sendTelegramMessage(chatId, "Access to this bot has been restricted by its owner.");
+      return;
+    }
     const description = createMatch[2].trim();
     const sub = await getOrCreateSubscription(fromId);
     const cfg = tierConfig(sub);
