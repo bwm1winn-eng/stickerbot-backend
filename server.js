@@ -213,17 +213,111 @@ async function hasChannelTaskClaim(userId) {
   return !!rows?.length;
 }
 
-async function verifyChannelTaskMembership(userId) {
-  if (!BOT_TOKEN) throw new Error("Telegram bot is not configured");
-  const query = new URLSearchParams({ chat_id: CHANNEL_TASK_CHAT, user_id: String(userId) });
-  const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getChatMember?${query.toString()}`);
-  const payload = await response.json();
-  if (!response.ok || !payload?.ok || !payload.result?.user || Number(payload.result.user.id) !== Number(userId)) {
-    throw new Error("Telegram membership check unavailable");
+let channelTaskAdminVerifiedUntil = 0;
+let channelTaskAdminCheck = null;
+const channelTaskMembershipChecks = new Map();
+
+function channelTaskError(code, reason, retryAfter = 3) {
+  const error = new Error(reason);
+  error.code = code;
+  error.retryAfter = Math.min(60, Math.max(1, Number(retryAfter) || 3));
+  return error;
+}
+
+// Error messages remain fixed, so fetch failures can never log a bot-token URL.
+async function channelTaskTelegramRequest(method, params, deadline) {
+  if (!BOT_TOKEN) throw channelTaskError("CHANNEL_TASK_CONFIGURATION", "Telegram bot is not configured");
+  const query = new URLSearchParams(params);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw channelTaskError("CHANNEL_CHECK_UNAVAILABLE", "Telegram membership check timed out");
+    let response;
+    let payload;
+    try {
+      response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}?${query.toString()}`, {
+        signal: AbortSignal.timeout(Math.min(4000, remaining)),
+      });
+      payload = await response.json();
+    } catch {
+      if (attempt === 0 && deadline - Date.now() > 500) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        continue;
+      }
+      throw channelTaskError("CHANNEL_CHECK_UNAVAILABLE", "Telegram membership network request failed");
+    }
+    if (response.ok && payload?.ok && payload.result) return payload.result;
+    const status = Number(payload?.error_code) || response.status;
+    const description = typeof payload?.description === "string" ? payload.description.toLowerCase() : "";
+    if (status === 401 || status === 403 ||
+      (status === 400 && /chat not found|member list is inaccessible|chat_admin_required|not enough rights|bot.*not.*member/.test(description))) {
+      throw channelTaskError("CHANNEL_TASK_CONFIGURATION", "Channel task requires a valid channel and bot administrator access");
+    }
+    const retryAfter = Math.min(60, Math.max(1, Number(payload?.parameters?.retry_after) || 3));
+    const wait = status === 429 ? retryAfter * 1000 : 300;
+    if ((status === 429 || status >= 500) && attempt === 0 && wait <= 1000 && deadline - Date.now() > wait) {
+      await new Promise((resolve) => setTimeout(resolve, wait));
+      continue;
+    }
+    throw channelTaskError("CHANNEL_CHECK_UNAVAILABLE", status === 429 ? "Telegram membership check rate limited" : "Telegram membership check unavailable", retryAfter);
   }
-  const member = payload.result;
-  return member.status === "creator" || member.status === "administrator" || member.status === "member" ||
-    (member.status === "restricted" && member.is_member === true);
+  throw channelTaskError("CHANNEL_CHECK_UNAVAILABLE", "Telegram membership check unavailable");
+}
+
+async function ensureChannelTaskAdmin(deadline) {
+  if (CHANNEL_TASK_CHAT.toLowerCase() !== "@lordeuso") {
+    throw channelTaskError("CHANNEL_TASK_CONFIGURATION", "Channel task reward is configured for a different channel");
+  }
+  if (channelTaskAdminVerifiedUntil > Date.now()) return;
+  if (!channelTaskAdminCheck) {
+    channelTaskAdminCheck = (async () => {
+      const bot = await channelTaskTelegramRequest("getMe", {}, deadline);
+      if (!bot.is_bot || !Number.isSafeInteger(bot.id)) {
+        throw channelTaskError("CHANNEL_TASK_CONFIGURATION", "Telegram bot identity is invalid");
+      }
+      const membership = await channelTaskTelegramRequest("getChatMember", { chat_id: CHANNEL_TASK_CHAT, user_id: String(bot.id) }, deadline);
+      if (membership?.user?.id !== bot.id || !["creator", "administrator"].includes(membership.status)) {
+        throw channelTaskError("CHANNEL_TASK_CONFIGURATION", "Bot administrator access is required for channel tasks");
+      }
+      channelTaskAdminVerifiedUntil = Date.now() + 60_000;
+    })();
+  }
+  const currentCheck = channelTaskAdminCheck;
+  try { await currentCheck; } finally {
+    if (channelTaskAdminCheck === currentCheck) channelTaskAdminCheck = null;
+  }
+}
+
+async function verifyChannelTaskMembership(userId, { retryNotJoined = false } = {}) {
+  const key = `${userId}:${retryNotJoined ? "claim" : "status"}`;
+  if (channelTaskMembershipChecks.has(key)) return channelTaskMembershipChecks.get(key);
+  const check = (async () => {
+    const deadline = Date.now() + 10_000;
+    await ensureChannelTaskAdmin(deadline);
+    for (let attempt = 0; attempt < (retryNotJoined ? 2 : 1); attempt++) {
+      const member = await channelTaskTelegramRequest("getChatMember", { chat_id: CHANNEL_TASK_CHAT, user_id: String(userId) }, deadline);
+      if (!member?.user || member.user.id !== Number(userId)) {
+        throw channelTaskError("CHANNEL_CHECK_UNAVAILABLE", "Telegram membership response identity mismatch");
+      }
+      if (["creator", "administrator", "member"].includes(member.status) ||
+        (member.status === "restricted" && member.is_member === true)) return true;
+      if (!["left", "kicked", "restricted"].includes(member.status) ||
+        (member.status === "restricted" && typeof member.is_member !== "boolean")) {
+        throw channelTaskError("CHANNEL_CHECK_UNAVAILABLE", "Telegram membership response status is unknown");
+      }
+      if (!retryNotJoined || attempt > 0) return false;
+      // A just-completed channel join can take a moment to become visible.
+      await new Promise((resolve) => setTimeout(resolve, 700));
+    }
+    return false;
+  })();
+  channelTaskMembershipChecks.set(key, check);
+  try { return await check; } finally { channelTaskMembershipChecks.delete(key); }
+}
+
+function sendChannelTaskCheckError(res, error) {
+  const code = error.code === "CHANNEL_TASK_CONFIGURATION" ? "CHANNEL_TASK_CONFIGURATION" : "CHANNEL_CHECK_UNAVAILABLE";
+  console.error("Channel task verification failed:", code, error.message);
+  return res.status(503).json({ error: "membership verification unavailable", code, retryAfter: error.retryAfter || 3 });
 }
 
 app.post("/api/tasks/channel/status", async (req, res) => {
@@ -235,8 +329,7 @@ app.post("/api/tasks/channel/status", async (req, res) => {
     const joined = await verifyChannelTaskMembership(userId);
     res.json({ claimed: false, joined, reward: CHANNEL_TASK_REWARD });
   } catch (err) {
-    console.error("Channel task status check failed:", err.message);
-    res.status(503).json({ error: "membership verification unavailable", code: "CHANNEL_CHECK_UNAVAILABLE" });
+    sendChannelTaskCheckError(res, err);
   }
 });
 
@@ -247,38 +340,31 @@ app.post("/api/tasks/channel/claim", async (req, res) => {
     if (await hasChannelTaskClaim(userId)) {
       return res.status(409).json({ error: "reward already claimed", code: "TASK_ALREADY_CLAIMED" });
     }
-    if (!(await verifyChannelTaskMembership(userId))) {
+    if (!(await verifyChannelTaskMembership(userId, { retryNotJoined: true }))) {
       return res.status(403).json({ error: "join the channel first", code: "CHANNEL_NOT_JOINED" });
     }
 
-    // The existing unique (user_id, code) key makes the reward claim one-time and race-safe.
-    const claim = await supabaseRequest("promo_redemptions?on_conflict=user_id,code", {
+    // Claim, credit, and ledger entry commit together. Never DELETE a claim after
+    // an ambiguous network failure: the database may already have credited it.
+    const result = await supabaseRequest("rpc/account_claim_channel_task", {
       method: "POST",
-      headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
-      body: JSON.stringify({ user_id: userId, code: CHANNEL_TASK_CLAIM_CODE }),
+      body: JSON.stringify({ p_user_id: userId }),
     });
-    if (!claim?.length) {
-      return res.status(409).json({ error: "reward already claimed", code: "TASK_ALREADY_CLAIMED" });
+    if (result?.code === "TASK_REWARD_EXHAUSTED") {
+      return res.status(409).json({ error: "channel task reward is no longer available", code: "TASK_REWARD_EXHAUSTED" });
     }
-
-    try {
-      const balance = await adjustBalance(userId, CHANNEL_TASK_REWARD, {
-        type: "reward",
-        description: "Channel subscription task",
-        metadata: { source: "channel_task", channel: CHANNEL_TASK_CHAT },
-      });
-      return res.json({ ok: true, balance, reward: CHANNEL_TASK_REWARD });
-    } catch (err) {
-      await supabaseRequest(
-        `promo_redemptions?user_id=eq.${userId}&code=eq.${encodeURIComponent(CHANNEL_TASK_CLAIM_CODE)}`,
-        { method: "DELETE" }
-      );
-      throw err;
+    if (result?.code === "TASK_REWARD_UNAVAILABLE") {
+      throw channelTaskError("CHANNEL_TASK_CONFIGURATION", "Channel task reward configuration is unavailable");
     }
+    if (!result || typeof result.applied !== "boolean" || typeof result.alreadyClaimed !== "boolean" ||
+      !result.claimed || !Number.isInteger(result.balance) || result.reward !== CHANNEL_TASK_REWARD ||
+      (!result.applied && !result.alreadyClaimed)) {
+      throw new Error("invalid channel task reward response");
+    }
+    return res.json({ ok: true, balance: result.balance, reward: result.reward, alreadyClaimed: result.alreadyClaimed });
   } catch (err) {
-    if (err.message === "Telegram membership check unavailable" || err.message === "Telegram bot is not configured") {
-      console.error("Channel task claim verification failed:", err.message);
-      return res.status(503).json({ error: "membership verification unavailable", code: "CHANNEL_CHECK_UNAVAILABLE" });
+    if (["CHANNEL_CHECK_UNAVAILABLE", "CHANNEL_TASK_CONFIGURATION"].includes(err.code)) {
+      return sendChannelTaskCheckError(res, err);
     }
     console.error("Channel task claim failed:", err.message);
     return res.status(500).json({ error: "could not grant task reward" });
@@ -661,6 +747,7 @@ app.post("/api/promo/redeem", async (req, res) => {
 
     const code = String(req.body.code || "").trim().toUpperCase();
     if (!code) return res.status(400).json({ error: "code is required" });
+    if (code.startsWith("__")) return res.status(400).json({ error: "invalid promo code", code: "INVALID_PROMO_CODE" });
 
     const codes = await supabaseRequest(`promo_codes?code=eq.${encodeURIComponent(code)}&select=*`);
     if (!codes || codes.length === 0) {
@@ -1100,50 +1187,82 @@ async function buildStickerPack(userId, packName, ids) {
 }
 
 async function generateOneImage(prompt) {
+  const deadline = Date.now() + 45_000;
   if (process.env.POLLINATIONS_KEY) {
     try {
-      return await generateViaPaidEndpoint(prompt);
+      return await generateViaPaidEndpoint(prompt, deadline);
     } catch (err) {
-      console.warn(`Платный способ не сработал (${err.message}), переключаюсь на бесплатный`);
+      console.warn("Paid image provider unavailable; trying fallback:", err.code || "IMAGE_PROVIDER_UNAVAILABLE");
     }
   }
-  return generateViaFreeEndpoint(prompt);
+  return generateViaFreeEndpoint(prompt, 1, 0, deadline);
 }
 
-async function generateViaPaidEndpoint(prompt) {
+function imageProviderError(status = 0) {
+  const error = new Error(status ? `Sticker image provider returned HTTP ${status}` : "Sticker image provider request failed or timed out");
+  error.code = status === 402 ? "IMAGE_PROVIDER_PAYMENT_REQUIRED" : "IMAGE_PROVIDER_UNAVAILABLE";
+  return error;
+}
+
+async function requestImageProvider(url, deadline) {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) throw imageProviderError();
+  try {
+    return await fetch(url, { signal: AbortSignal.timeout(Math.min(45_000, remaining)) });
+  } catch {
+    // node-fetch errors may contain the full URL, including the prompt and key.
+    throw imageProviderError();
+  }
+}
+
+async function imageProviderBuffer(response) {
+  try {
+    const arrayBuffer = await response.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  } catch {
+    throw imageProviderError();
+  }
+}
+
+async function generateViaPaidEndpoint(prompt, deadline = Date.now() + 45_000) {
   const encodedPrompt = encodeURIComponent(prompt);
   const seed = Math.floor(Math.random() * 1000000);
-  const url = `https://gen.pollinations.ai/image/${encodedPrompt}?width=512&height=512&seed=${seed}&nologo=true&key=${process.env.POLLINATIONS_KEY}`;
+  const url = `https://gen.pollinations.ai/image/${encodedPrompt}?width=512&height=512&seed=${seed}&nologo=true&key=${encodeURIComponent(process.env.POLLINATIONS_KEY)}`;
 
-  const response = await fetch(url);
+  const response = await requestImageProvider(url, deadline);
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`paid endpoint ${response.status}: ${text.slice(0, 150)}`);
+    response.body?.destroy?.();
+    throw imageProviderError(response.status);
   }
-  const arrayBuffer = await response.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+  return imageProviderBuffer(response);
 }
 
-async function generateViaFreeEndpoint(prompt, retries = 3, attempt = 0) {
+async function generateViaFreeEndpoint(prompt, retries = 1, attempt = 0, deadline = Date.now() + 45_000) {
   const encodedPrompt = encodeURIComponent(prompt);
   const seed = Math.floor(Math.random() * 1000000);
   const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&seed=${seed}&nologo=true`;
 
-  const response = await fetch(url);
+  const response = await requestImageProvider(url, deadline);
+  if (!response.ok) response.body?.destroy?.();
 
-  if ((response.status === 429 || response.status === 402) && retries > 0) {
-    const wait = 12000 + attempt * 8000;
-    await new Promise((r) => setTimeout(r, wait));
-    return generateViaFreeEndpoint(prompt, retries - 1, attempt + 1);
+  if ((response.status === 429 || response.status >= 500) && retries > 0) {
+    const retryAfter = response.headers?.get("retry-after");
+    let wait = 1000;
+    if (retryAfter) {
+      const seconds = Number(retryAfter);
+      const dateWait = Date.parse(retryAfter) - Date.now();
+      wait = Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : Number.isFinite(dateWait) ? Math.max(0, dateWait) : 1000;
+    }
+    // Long rate-limit waits are returned as a failure/refund instead of tying up
+    // a batch; retries never occur earlier than the provider's Retry-After.
+    if (wait <= 5000 && deadline - Date.now() > wait + 1000) {
+      await new Promise((resolve) => setTimeout(resolve, wait));
+      return generateViaFreeEndpoint(prompt, retries - 1, attempt + 1, deadline);
+    }
   }
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Pollinations API error ${response.status}: ${text.slice(0, 200)}`);
-  }
-
-  const arrayBuffer = await response.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+  if (!response.ok) throw imageProviderError(response.status);
+  return imageProviderBuffer(response);
 }
 
 async function processToSticker(buffer) {
