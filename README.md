@@ -58,9 +58,9 @@ npm start
 - **Бесплатный Pollinations API** может ограничивать частоту запросов. При наличии
   `POLLINATIONS_KEY` backend сначала пробует платный endpoint, затем переключается
   на бесплатный вариант.
-- **Анимированные стикеры** (WEBM) в этой версии не реализованы — сейчас style
-  "animated" всё равно создаёт статичные стикеры. Это отдельная, более сложная
-  фича (нужен video-рендеринг), можно добавить следующим шагом.
+- **Анимированные стикеры** (WEBM) в этой версии не реализованы. Все доступные
+  стили создают статичные стикеры; значение `style: "animated"` не поддерживается.
+  Для анимированных стикеров нужен отдельный video-рендеринг.
 - Хранилище картинок — **in-memory** (`Map` в оперативной памяти). Это ок для
   MVP, но при перезапуске сервера (или через долгое время) старые картинки
   станут недоступны. Для продакшена стоит перейти на S3-совместимое хранилище.
@@ -75,14 +75,31 @@ npm start
 
 Изолированные проверки: `node scripts/verify-chat-generation.cjs` и `node scripts/verify-atomic-accounting.cjs`. Проверка функций базы находится в `supabase/tests/atomic_accounting.sql`; её тестовые записи откатываются транзакцией. Реальные платежи и запросы генерации при этих проверках не выполняются.
 
-## Premium Studio — 6 October 2026
+## Premium Studio — revised 6 October 2026
 
 | Plan | First 30 days / manual renewal | Coins per image | Batch limit | Daily coins | Studio |
 | --- | --- | --- | --- | --- | --- |
-| Standard | 19 / 29 Stars | 4 | 6 | 3 | Existing benefits |
-| Luxury | 52 / 79 Stars | 3 | 10 | 5 | Gold Atelier, 8 saved recipes, favorite packs |
-| Ultimate | 229 / 350 Stars | 2 | 12 | 12 | Luxury features, 24 recipes, Aurora Studio, art/mood prompt builder |
+| Standard | 21 / 32 Stars | 4 | 6 | 3 | Existing benefits |
+| Luxury | 65 / 99 Stars | 3 | 10 | 0 | Gold Atelier, quick generation styles |
+| Ultimate | 287 / 438 Stars | 2 | 12 | 0 | Luxury features, Aurora Studio, six-expression emotion set |
 
-Recipes save ideas and batch sizes. Recipes and favorites are device/browser-local and are lost if browser storage is cleared; they do not sync. The builder edits prompt text without automatically generating images. Premium Studio requires an active, unexpired Luxury or Ultimate subscription; the Aurora theme and builder require Ultimate. All six public themes remain available, with Original the default.
+Prices are rounded upward after Standard's requested 10% increase and Luxury/Ultimate's 25% increase. They apply to newly created invoices. Already issued invoices that carry an explicit quoted Stars amount continue to validate at that amount. Luxury and Ultimate no longer grant daily coins; Standard stays at 3. Discounts, batch sizes, and transactional accounting are unchanged.
 
-Coin subscriptions keep their prices: Standard 580, Luxury 1580, Ultimate 7000, for 30 days, with one purchase per account every three calendar months. Stars prices, discounts, batch sizes, and transactional accounting remain unchanged. Luxury daily coins fall from 8 to 5, Ultimate from 35 to 12; Standard stays at 3. The matching frontend update exposes these controls; the server handles subscription status and accounting, not local Studio preferences.
+Coin subscriptions are Standard 640, Luxury 1980, Ultimate 8760 for 30 days, with one purchase per account every three calendar months. Each price is its regular renewal price × 8 coins per Star × 2.5. Apply the additive `account_buy_coin_subscription_v2` RPC migration before publishing the new server/client prices so database debits and visible quotes agree. After both deployments are live, apply the separate cutoff migration that rejects legacy RPC purchases.
+
+`POST /api/subscription/buy-coins` requires an integer `expectedPrice` alongside `initData` and `tier`. A missing or stale quote returns 409 with `code: "COIN_SUBSCRIPTION_PRICE_CHANGED"` and the current `cost`, without any debit. The frontend must refresh the quote and ask for confirmation again; it must not automatically retry a purchase. The v2 RPC also validates `p_expected_price` atomically.
+
+Saved recipes and favorite-pack controls are removed from the frontend. Premium themes require an active, unexpired Luxury/Ultimate subscription; Aurora requires Ultimate. Themes are interface preferences and do not grant server privileges.
+
+### Generation payload
+
+`POST /api/generate` continues to accept `initData`, `prompt`, and `count`. It additionally accepts:
+
+- `style`: `vector` (default), `clay3d`, `paper`, or `anime`. Non-vector styles require active Luxury or Ultimate. The server uses one exclusive art-style suffix, avoiding the previous forced vector clause overriding a 3D-look request.
+- `preset`: `none` (default) or `emotions`. Emotions require active Ultimate and exactly `count: 6`. Six normal paid image generations use one idea with happy, sad, wow, love, angry, and wink variations. Successful response images contain the corresponding `emotion` key. Six successes cost 12 coins; partial/total failures use the existing refund rules. No additional image requests are added beyond the purchased count.
+
+Unknown values return 400; insufficient tiers return 403; preset-count mismatch returns 400 before any quota reservation or debit. Invalid/non-string prompts also return 400. Chat `/create` keeps its existing four-image vector generation flow and subscription discount.
+
+Run `node scripts/verify-premium-express.cjs` for isolated pricing/quote, entitlement, art-prompt, emotion-set/refund, and old invoice checks. It makes no real external requests. Existing `verify-atomic-accounting.cjs` and `verify-chat-generation.cjs` cover payment retry and shared chat quota/refunds.
+
+These produce static raster stickers, including a 3D-render look rather than actual 3D geometry or animation. Independent image generations can vary character details; an emotion set is not a guarantee of exact visual identity.
