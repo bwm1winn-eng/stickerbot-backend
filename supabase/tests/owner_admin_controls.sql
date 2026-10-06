@@ -1,0 +1,30 @@
+begin;
+set local statement_timeout='15s';
+do $$
+declare a bigint:=9000000000012345000; u bigint:=9000000000012345001; k text:='admin-test-'||gen_random_uuid()::text; r jsonb; e timestamptz; failed boolean;
+begin
+ if exists(select 1 from public.balances where user_id in(a,u)) then raise exception 'fixture collision'; end if;
+ if has_function_privilege('anon','public.account_admin_action(bigint,bigint,text,text,integer,text,integer,text)','execute') or has_function_privilege('authenticated','public.account_admin_action(bigint,bigint,text,text,integer,text,integer,text)','execute') then raise exception 'public admin RPC'; end if;
+ if exists(select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relname in('app_user_moderation','app_admin_audit') and not c.relrowsecurity) then raise exception 'RLS missing'; end if;
+ r:=public.account_admin_action(a,u,'set-balance',k,100);
+ r:=public.account_admin_action(a,u,'set-balance',k,100);
+ if r->>'replayed'<>'true' or (select balance from public.balances where user_id=u)<>100 or (select count(*) from public.account_activity where user_id=u)<>1 then raise exception 'admin replay applied twice'; end if;
+ failed:=false;begin perform public.account_admin_action(a,u,'set-balance',k,200);exception when invalid_parameter_value then failed:=true;end;
+ if not failed then raise exception 'reused key accepted changed action'; end if;
+ k:='admin-test-'||gen_random_uuid()::text;
+ perform public.account_admin_action(a,u,'grant-plan',k,null,'ultimate',30);
+ select expires_at into e from public.subscriptions where user_id=u;
+ perform public.account_admin_action(a,u,'grant-plan',k,null,'ultimate',30);
+ if (select expires_at from public.subscriptions where user_id=u)<>e or not (select active from public.subscriptions where user_id=u) then raise exception 'grant replay extended term'; end if;
+ perform public.account_admin_action(a,u,'revoke-plan','admin-test-'||gen_random_uuid()::text);
+ if (select active from public.subscriptions where user_id=u) then raise exception 'revoke failed'; end if;
+ perform public.account_admin_action(a,u,'ban','admin-test-'||gen_random_uuid()::text,null,null,null,'fixture');
+ if not (select banned from public.app_user_moderation where user_id=u) then raise exception 'ban failed'; end if;
+ perform public.account_admin_action(a,u,'unban','admin-test-'||gen_random_uuid()::text);
+ if (select banned from public.app_user_moderation where user_id=u) then raise exception 'unban failed'; end if;
+ failed:=false;begin perform public.account_admin_action(a,a,'ban','admin-test-'||gen_random_uuid()::text);exception when invalid_parameter_value then failed:=true;end;
+ if not failed then raise exception 'self ban accepted'; end if;
+ if (select count(*) from public.app_admin_audit where target_id=u)<>5 then raise exception 'audit count incorrect'; end if;
+end;
+$$;
+rollback;
