@@ -74,3 +74,15 @@ npm start
 Бесплатный лимит четырёх успешных стикеров в сутки общий для мини-приложения и команды `/create`. Несозданные стикеры освобождают лимит и возвращают монеты, включая частично успешную генерацию.
 
 Изолированные проверки: `node scripts/verify-chat-generation.cjs` и `node scripts/verify-atomic-accounting.cjs`. Проверка функций базы находится в `supabase/tests/atomic_accounting.sql`; её тестовые записи откатываются транзакцией. Реальные платежи и запросы генерации при этих проверках не выполняются.
+
+## Premium Studio — 6 October 2026
+
+| Plan | First 30 days / manual renewal | Coins per image | Batch limit | Daily coins | Studio |
+| --- | --- | --- | --- | --- | --- |
+| Standard | 19 / 29 Stars | 4 | 6 | 3 | Existing benefits |
+| Luxury | 52 / 79 Stars | 3 | 10 | 5 | Gold Atelier, 8 saved recipes, favorite packs |
+| Ultimate | 229 / 350 Stars | 2 | 12 | 12 | Luxury features, 24 recipes, Aurora Studio, art/mood prompt builder |
+
+Recipes save ideas and batch sizes. Recipes and favorites are device/browser-local and are lost if browser storage is cleared; they do not sync. The builder edits prompt text without automatically generating images. Premium Studio requires an active, unexpired Luxury or Ultimate subscription; the Aurora theme and builder require Ultimate. All six public themes remain available, with Original the default.
+
+Coin subscriptions keep their prices: Standard 580, Luxury 1580, Ultimate 7000, for 30 days, with one purchase per account every three calendar months. Stars prices, discounts, batch sizes, and transactional accounting remain unchanged. Luxury daily coins fall from 8 to 5, Ultimate from 35 to 12; Standard stays at 3. The matching frontend update exposes these controls; the server handles subscription status and accounting, not local Studio preferences.
