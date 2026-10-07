@@ -4397,7 +4397,7 @@
   let packSaveBusy=false,packSaveNonce=null,packSaveSignature='';
   async function downloadSelectedStickers() {
     const chosen=[...selectedIndices].map(i=>currentResults[i]).filter(Boolean);
-    for(const sticker of chosen){const raw=typeof sticker==='string'?sticker:sticker.url;const link=new URL(raw,BACKEND);if(link.origin!==new URL(BACKEND).origin)continue;link.searchParams.set('download','1');
+    for(const sticker of chosen){const raw=typeof sticker==='string'?sticker:sticker.url;const link=new URL(raw,BACKEND);const base=new URL(BACKEND);if(link.host!==base.host||link.username||link.password||!['http:','https:'].includes(link.protocol))continue;link.protocol=base.protocol;link.searchParams.set('download','1');
       if(tg?.openLink)tg.openLink(link.href);else{const a=document.createElement('a');a.href=link.href;a.download='sticker_'+(sticker.id||'image')+'.png';a.rel='noopener';document.body.append(a);a.click();a.remove();}
       await new Promise(r=>setTimeout(r,400));
     }

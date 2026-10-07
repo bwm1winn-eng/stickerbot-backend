@@ -922,7 +922,7 @@ app.post("/api/generate", async (req, res) => {
     }
     let images;
     try {
-      images = await generateStickerSet(prompt, requestedImages, (id) => `${req.protocol}://${req.get("host")}/api/image/${id}`, { cfg, style, preset, background, userId });
+      images = await generateStickerSet(prompt, requestedImages, (id) => `/api/image/${id}`, { cfg, style, preset, background, userId });
     } catch (err) {
       await adjustBalance(userId, cost, {
         type: "refund",
