@@ -1,3 +1,5 @@
+import { createCreatorFeatures } from "./creator-features.js";
+import { stickerBackground, backgroundPrompt, normalizeSticker } from "./sticker-background.js";
 import express from "express";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import cors from "cors";
@@ -33,6 +35,7 @@ const HELP_MAX_REQUESTS_PER_WINDOW = 10;
 async function supabaseRequest(path, options = {}) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...options,
+    signal: options.signal || AbortSignal.timeout(20_000),
     headers: {
       apikey: SUPABASE_KEY,
       Authorization: `Bearer ${SUPABASE_KEY}`,
@@ -546,7 +549,7 @@ const STANDARD_PROMPT_SUFFIX =
   ", clean crisp sticker finish, soft shading, polished look";
 
 // Prices round upward after the requested increase: Standard +10%,
-// Luxury/Ultimate +25%. Only Standard retains a daily coin benefit.
+// Luxury/Ultimate +25%. Subscriptions no longer grant daily coins.
 // Provider costs and net Stars receipts determine the actual profit margin.
 const TIERS = {
   standard: {
@@ -555,7 +558,7 @@ const TIERS = {
     renewStars: 32,
     discountPerImage: 1,
     maxImages: 6,
-    dailyBonus: 3,
+    dailyBonus: 0,
     generationPauseMs: 700,
     promptSuffix: STANDARD_PROMPT_SUFFIX,
   },
@@ -600,8 +603,11 @@ const EMOTION_VARIANTS = [
   { key: "wink", description: "playful winking expression" },
 ];
 
+const creator = createCreatorFeatures({supabaseRequest,generatedCache,extractUserId,getBotUsername,telegramApi,createStickerSet,addStickerToSet,invalidateStickerSetCache,generateStickerSet,isAccountBanned,getOrCreateBalance,TIERS,STICKER_ART_STYLES});
+creator.register(app);
+
 function studioBenefitsText(tier) {
-  if (tier === "ultimate") return "Темы Gold Atelier и Aurora Studio, 3D-look и другие стили, набор из 6 эмоций одним запуском.";
+  if (tier === "ultimate") return "Темы Obsidian Observatory и Origami Atelier, 3D-look и другие стили, наборы из 6 или 24 эмоций одним запуском.";
   if (tier === "luxury") return "Тема Gold Atelier, 3D-look и другие стили генерации.";
   return "";
 }
@@ -640,17 +646,7 @@ function tierConfig(sub) {
   return TIERS[sub.tier] || null;
 }
 
-async function maybeApplyDailyBonus(userId, sub) {
-  const amount = await supabaseRequest("rpc/account_apply_daily_bonus", {
-    method: "POST",
-    body: JSON.stringify({
-      p_user_id: userId,
-      p_bonus_by_tier: Object.fromEntries(Object.entries(TIERS).map(([tier, cfg]) => [tier, cfg.dailyBonus])),
-    }),
-  });
-  if (!Number.isInteger(amount) || amount < 0) throw new Error("invalid daily bonus response");
-  return amount;
-}
+async function maybeApplyDailyBonus() { return 0; }
 
 app.post("/api/subscription/status", async (req, res) => {
   try {
@@ -729,7 +725,7 @@ app.post("/api/help/ask", async (req, res) => {
     "Answer only questions about using the app, generating stickers, sticker packs, balance, and the visible subscription terms.",
     "Do not claim you changed a user's account or payment. Never ask for passwords, bot tokens, or secret keys.",
     `Current 30-day subscription terms: ${Object.entries(TIERS).map(([tier, cfg]) => `${cfg.label}: first month ${cfg.firstStars} Stars, manual renewal ${cfg.renewStars} Stars, ${GEN_COST_PER_IMAGE - cfg.discountPerImage} balance credits per image, up to ${cfg.maxImages} images per batch${cfg.dailyBonus > 0 ? `, ${cfg.dailyBonus} daily balance credits` : ", no daily coin bonus"}`).join("; ")}.`,
-    "Luxury adds the Gold Atelier interface theme and server-supported vector, clay 3D-look, paper-cut, and anime generation styles. Ultimate includes these features, the Aurora Studio interface theme, and an emotion-set shortcut: one idea generates up to six static stickers with happy, sad, wow, love, angry, and wink expressions in one request. This costs 12 coins for six successful stickers; failed images are refunded as usual.",
+    "Luxury adds the Gold Atelier interface theme and server-supported vector, clay 3D-look, paper-cut, and anime generation styles. Ultimate includes these features, two Ultimate interface themes, and automatic packs of 24 emotions. The existing emotion-set shortcut generates six static stickers with happy, sad, wow, love, angry, and wink expressions in one request. This costs 12 coins for six successful stickers; failed images are refunded as usual.",
     "Styles control the image-generation prompt. A 3D-look sticker is a static raster illustration, not a 3D model or animated sticker. The emotion-set uses six normal image generations and cannot guarantee identical character details across independently generated images. Saved recipes and favorite-pack controls are no longer part of the interface.",
     `Premium can also be purchased with coins: ${Object.entries(subscriptionCoinPrices()).map(([tier, amount]) => `${TIERS[tier].label} ${amount}`).join(", ")}, for 30 days. One coin purchase per account every three calendar months across all tiers; Stars purchases have no such cooldown. Coin prices use the regular Stars renewal price times 8 coins per Star times 2.5, without an introductory discount.`,
     `Reply in ${language}, in at most 5 short sentences. If unsure, say so and suggest the in-app tutorial or contacting the bot owner.`,
@@ -867,8 +863,13 @@ app.post("/api/promo/redeem", async (req, res) => {
 app.post("/api/generate", async (req, res) => {
   try {
     const { prompt, count, initData } = req.body;
+    let background;
+    try { background = stickerBackground(req.body.background, req.body.color); } catch { return res.status(400).json({error:"invalid background",code:"INVALID_BACKGROUND"}); }
     if (typeof prompt !== "string" || !prompt.trim()) {
       return res.status(400).json({ error: "prompt is required" });
+    }
+    if (prompt.length > 4000) {
+      return res.status(400).json({ error: "prompt exceeds 4000 characters", code: "PROMPT_TOO_LONG" });
     }
 
     const userId = extractUserId(initData);
@@ -921,7 +922,7 @@ app.post("/api/generate", async (req, res) => {
     }
     let images;
     try {
-      images = await generateStickerSet(prompt, requestedImages, (id) => `${req.protocol}://${req.get("host")}/api/image/${id}`, { cfg, style, preset });
+      images = await generateStickerSet(prompt, requestedImages, (id) => `${req.protocol}://${req.get("host")}/api/image/${id}`, { cfg, style, preset, background, userId });
     } catch (err) {
       await adjustBalance(userId, cost, {
         type: "refund",
@@ -950,10 +951,10 @@ app.post("/api/generate", async (req, res) => {
 });
 
 async function generateStickerSet(prompt, numImages, urlBuilder, options = {}) {
-  const { cfg = null, style = "vector", preset = "none" } = options;
+  const { cfg = null, style = "vector", preset = "none", background = stickerBackground(), userId } = options;
   const stickerPrompt =
     `sticker, ${prompt.trim()}, ${STICKER_ART_STYLES[style]}, ` +
-    `white background, centered, high contrast` +
+    `${backgroundPrompt(background)}, centered, high contrast` +
     (cfg ? cfg.promptSuffix : "");
 
   const images = [];
@@ -964,13 +965,12 @@ async function generateStickerSet(prompt, numImages, urlBuilder, options = {}) {
       const imagePrompt = emotion
         ? `${stickerPrompt}, one recurring character matching the same original idea, ${emotion.description}`
         : stickerPrompt;
-      const buffer = await generateOneImage(imagePrompt);
-      const processed = await processToSticker(buffer);
-      const id = `${Date.now()}_${i}`;
-      generatedCache.set(id, processed);
+      const buffer = await generateOneImage(imagePrompt, background);
+      const processed = await normalizeSticker(buffer, background);
+      const id = await creator.putAsset(userId, processed);
       images.push({
         id,
-        url: urlBuilder ? urlBuilder(id) : undefined,
+        url: urlBuilder ? urlBuilder(id) : "/api/image/" + id,
         animated: false,
         ...(emotion ? { emotion: emotion.key } : {}),
       });
@@ -986,10 +986,13 @@ async function generateStickerSet(prompt, numImages, urlBuilder, options = {}) {
   return images;
 }
 
-app.get("/api/image/:id", (req, res) => {
-  const buf = generatedCache.get(req.params.id);
+app.get("/api/image/:id", async (req, res) => {
+  let buf;
+  try { buf = await creator.getAsset(req.params.id); } catch { return res.status(503).send("temporarily unavailable"); }
   if (!buf) return res.status(404).send("not found");
   res.set("Content-Type", "image/png");
+  res.set("Cache-Control", "private, max-age=300");
+  res.set("X-Content-Type-Options", "nosniff");
   if (req.query.download) {
     res.set("Content-Disposition", `attachment; filename="sticker_${req.params.id}.png"`);
   }
@@ -1001,7 +1004,7 @@ app.post("/api/my-packs", async (req, res) => {
     const userId = extractUserId(req.body.initData);
     if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
 
-    const packs = await supabaseRequest(`sticker_packs?user_id=eq.${userId}&select=short_name,title`);
+    const packs = await creator.accessiblePacks(userId);
     res.json({ packs: packs || [] });
   } catch (err) {
     console.error("My-packs error:", err.message);
@@ -1012,13 +1015,14 @@ app.post("/api/my-packs", async (req, res) => {
 async function getOwnedStickerPack(userId, shortName) {
   if (typeof shortName !== "string" || !/^[A-Za-z0-9_]{1,64}$/.test(shortName)) return null;
   const rows = await supabaseRequest(
-    `sticker_packs?user_id=eq.${userId}&short_name=eq.${encodeURIComponent(shortName)}&select=short_name,title`
+    `sticker_packs?user_id=eq.${userId}&short_name=eq.${encodeURIComponent(shortName)}&select=short_name,title,user_id`
   );
   return rows?.[0] || null;
 }
 
 async function telegramApi(method, payload) {
   const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
+    signal: AbortSignal.timeout(15_000),
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -1060,11 +1064,11 @@ app.post("/api/my-packs/stickers", async (req, res) => {
   try {
     const userId = extractUserId(req.body.initData);
     if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
-    const pack = await getOwnedStickerPack(userId, req.body.shortName);
+    const pack = await creator.packAccess(userId, req.body.shortName);
     if (!pack) return res.status(404).json({ error: "pack not found" });
     const stickerSet = await getCachedStickerSet(pack.short_name);
     res.json({
-      pack: { shortName: pack.short_name, title: stickerSet.title || pack.title },
+      pack: { shortName: pack.short_name, title: stickerSet.title || pack.title, role: pack.role },
       stickers: (stickerSet.stickers || []).map((sticker) => ({
         fileId: sticker.file_id,
         fileUniqueId: sticker.file_unique_id,
@@ -1083,7 +1087,7 @@ app.post("/api/my-packs/sticker-image", async (req, res) => {
   try {
     const userId = extractUserId(req.body.initData);
     if (!userId) return res.status(400).json({ error: "cannot determine telegram user id" });
-    const pack = await getOwnedStickerPack(userId, req.body.shortName);
+    const pack = await creator.packAccess(userId, req.body.shortName);
     if (!pack) return res.status(404).json({ error: "pack not found" });
     const stickerSet = await getCachedStickerSet(pack.short_name);
     const fileId = req.body.fileId;
@@ -1186,93 +1190,18 @@ app.post("/api/my-packs/delete-sticker", async (req, res) => {
   }
 });
 
-app.post("/api/add-to-pack", async (req, res) => {
-  try {
-    const { packName, targetPackShortName, stickers, initData } = req.body;
-    if (!stickers?.length || (!packName && !targetPackShortName)) {
-      return res.status(400).json({ error: "stickers and (packName or targetPackShortName) are required" });
-    }
+async function buildStickerPack(userId,packName,ids) { return creator.makePack(userId,packName,ids); }
 
-    const userId = extractUserId(initData);
-    if (!userId) {
-      return res.status(400).json({ error: "cannot determine telegram user id" });
-    }
-
-    const ids = stickers.map((s) => s.id);
-    let packLink;
-
-    if (targetPackShortName) {
-      const owned = await supabaseRequest(
-        `sticker_packs?user_id=eq.${userId}&short_name=eq.${encodeURIComponent(targetPackShortName)}&select=short_name`
-      );
-      if (!owned || owned.length === 0) {
-        return res.status(403).json({ error: "pack not found or not yours" });
-      }
-      let addedAny = false;
-      for (const id of ids) {
-        const buf = generatedCache.get(id);
-        if (!buf) continue;
-        await addStickerToSet(userId, targetPackShortName, buf);
-        addedAny = true;
-      }
-      if (!addedAny) return res.status(400).json({ error: "no valid stickers found" });
-      invalidateStickerSetCache(targetPackShortName);
-      packLink = `https://t.me/addstickers/${targetPackShortName}`;
-    } else {
-      packLink = await buildStickerPack(userId, packName, ids);
-      if (!packLink) {
-        return res.status(400).json({ error: "no valid stickers found" });
-      }
-    }
-
-    res.json({ ok: true, packLink });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message || "internal error" });
-  }
-});
-
-async function buildStickerPack(userId, packName, ids) {
-  const botUsername = await getBotUsername();
-  const shortName = `${slugify(packName)}_${Date.now()}`.slice(0, 50) + `_by_${botUsername}`;
-
-  let firstSticker = true;
-  for (const id of ids) {
-    const buf = generatedCache.get(id);
-    if (!buf) continue;
-
-    if (firstSticker) {
-      await createStickerSet(userId, shortName, packName, buf);
-      firstSticker = false;
-    } else {
-      await addStickerToSet(userId, shortName, buf);
-    }
-  }
-
-  if (firstSticker) return null;
-
-  try {
-    await supabaseRequest(`sticker_packs`, {
-      method: "POST",
-      body: JSON.stringify({ short_name: shortName, user_id: userId, title: packName }),
-    });
-  } catch (err) {
-    console.error("Failed to record pack in sticker_packs:", err.message);
-  }
-
-  return `https://t.me/addstickers/${shortName}`;
-}
-
-async function generateOneImage(prompt) {
+async function generateOneImage(prompt, background = stickerBackground()) {
   const deadline = Date.now() + 45_000;
   if (process.env.POLLINATIONS_KEY) {
     try {
-      return await generateViaPaidEndpoint(prompt, deadline);
+      return await generateViaPaidEndpoint(prompt, deadline, background);
     } catch (err) {
       console.warn("Paid image provider unavailable; trying fallback:", err.code || "IMAGE_PROVIDER_UNAVAILABLE");
     }
   }
-  return generateViaFreeEndpoint(prompt, 1, 0, deadline);
+  return generateViaFreeEndpoint(prompt, 1, 0, deadline, background);
 }
 
 function imageProviderError(status = 0) {
@@ -1285,7 +1214,7 @@ async function requestImageProvider(url, deadline) {
   const remaining = deadline - Date.now();
   if (remaining <= 0) throw imageProviderError();
   try {
-    return await fetch(url, { signal: AbortSignal.timeout(Math.min(45_000, remaining)) });
+    return await fetch(url, { signal: AbortSignal.timeout(Math.min(45_000, remaining)), size:8*1024*1024 });
   } catch {
     // node-fetch errors may contain the full URL, including the prompt and key.
     throw imageProviderError();
@@ -1301,10 +1230,10 @@ async function imageProviderBuffer(response) {
   }
 }
 
-async function generateViaPaidEndpoint(prompt, deadline = Date.now() + 45_000) {
+async function generateViaPaidEndpoint(prompt, deadline = Date.now() + 45_000, background = stickerBackground()) {
   const encodedPrompt = encodeURIComponent(prompt);
   const seed = Math.floor(Math.random() * 1000000);
-  const url = `https://gen.pollinations.ai/image/${encodedPrompt}?width=512&height=512&seed=${seed}&nologo=true&key=${encodeURIComponent(process.env.POLLINATIONS_KEY)}`;
+  const url = `https://gen.pollinations.ai/image/${encodedPrompt}?width=512&height=512&seed=${seed}&nologo=true&transparent=${background.mode === "transparent"}&key=${encodeURIComponent(process.env.POLLINATIONS_KEY)}`;
 
   const response = await requestImageProvider(url, deadline);
   if (!response.ok) {
@@ -1314,10 +1243,10 @@ async function generateViaPaidEndpoint(prompt, deadline = Date.now() + 45_000) {
   return imageProviderBuffer(response);
 }
 
-async function generateViaFreeEndpoint(prompt, retries = 1, attempt = 0, deadline = Date.now() + 45_000) {
+async function generateViaFreeEndpoint(prompt, retries = 1, attempt = 0, deadline = Date.now() + 45_000, background = stickerBackground()) {
   const encodedPrompt = encodeURIComponent(prompt);
   const seed = Math.floor(Math.random() * 1000000);
-  const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&seed=${seed}&nologo=true`;
+  const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&seed=${seed}&nologo=true&transparent=${background.mode === "transparent"}`;
 
   const response = await requestImageProvider(url, deadline);
   if (!response.ok) response.body?.destroy?.();
@@ -1334,7 +1263,7 @@ async function generateViaFreeEndpoint(prompt, retries = 1, attempt = 0, deadlin
     // a batch; retries never occur earlier than the provider's Retry-After.
     if (wait <= 5000 && deadline - Date.now() > wait + 1000) {
       await new Promise((resolve) => setTimeout(resolve, wait));
-      return generateViaFreeEndpoint(prompt, retries - 1, attempt + 1, deadline);
+      return generateViaFreeEndpoint(prompt, retries - 1, attempt + 1, deadline, background);
     }
   }
 
@@ -1398,26 +1327,27 @@ function extractUserId(initData) {
 let cachedBotUsername = null;
 async function getBotUsername() {
   if (cachedBotUsername) return cachedBotUsername;
-  const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getMe`);
+  const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getMe`, {signal: AbortSignal.timeout(10_000)});
   const data = await res.json();
   cachedBotUsername = data.result.username;
   return cachedBotUsername;
 }
 
-async function createStickerSet(userId, shortName, title, pngBuffer) {
+async function createStickerSet(userId, shortName, title, pngBuffer, emojis=[]) {
+  const buffers=Array.isArray(pngBuffer)?pngBuffer:[pngBuffer];
   const form = new FormData();
   form.append("user_id", String(userId));
   form.append("name", shortName);
   form.append("title", title.slice(0, 64));
-  form.append("sticker_format", "static");
   form.append(
     "stickers",
-    JSON.stringify([{ sticker: "attach://sticker0", emoji_list: ["😀"] }])
+    JSON.stringify(buffers.map((_,i)=>({sticker:`attach://sticker${i}`,format:"static",emoji_list:[emojis[i]||"😀"]})))
   );
-  form.append("sticker0", new Blob([pngBuffer], { type: "image/png" }), "sticker0.png");
+  buffers.forEach((buffer,i)=>form.append(`sticker${i}`,new Blob([buffer],{type:"image/png"}),`sticker${i}.png`));
 
   const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/createNewStickerSet`, {
     method: "POST",
+    signal: AbortSignal.timeout(30_000),
     body: form,
   });
   const data = await res.json();
@@ -1430,12 +1360,13 @@ async function addStickerToSet(userId, shortName, pngBuffer) {
   form.append("name", shortName);
   form.append(
     "sticker",
-    JSON.stringify({ sticker: "attach://sticker0", emoji_list: ["😀"] })
+    JSON.stringify({ sticker: "attach://sticker0", format: "static", emoji_list: ["😀"] })
   );
   form.append("sticker0", new Blob([pngBuffer], { type: "image/png" }), "sticker0.png");
 
   const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/addStickerToSet`, {
     method: "POST",
+    signal: AbortSignal.timeout(30_000),
     body: form,
   });
   const data = await res.json();
@@ -1685,8 +1616,8 @@ const HELP_COMMANDS_TEXT =
   "💰 <b>Баланс</b>\n" +
   "У новых — 15 $ бесплатно. Не хватает? Купи $ за Telegram Stars в приложении, либо спроси про промокод.\n\n" +
   "🔴 <b>Premium (Standard / Luxury / Ultimate)</b>\n" +
-  "Скидки на генерацию и больше картинок за раз. Первый месяц: Standard 21⭐, Luxury 65⭐, Ultimate 287⭐; продление вручную: 32⭐, 99⭐ и 438⭐ соответственно. Standard: +3 монеты в день. Luxury и Ultimate — без ежедневных бонусов. Кнопка Premium — в приложении.\n" +
-  "Luxury: тема Gold Atelier и быстрый выбор стиля — вектор, 3D-look, бумага, аниме. Ultimate: эти возможности, тема Aurora Studio и 6 эмоций одного персонажа за один запуск (12 монет за 6 успешно созданных стикеров). 3D-look — статичная иллюстрация с объёмным видом.\n\n" +
+  "Скидки на генерацию и больше картинок за раз. Первый месяц: Standard 21⭐, Luxury 65⭐, Ultimate 287⭐; продление вручную: 32⭐, 99⭐ и 438⭐ соответственно. Все тарифы — без ежедневных монетных подарков. Кнопка Premium — в приложении.\n" +
+  "Luxury: тема Gold Atelier и быстрый выбор стиля — вектор, 3D-look, бумага, аниме. Ultimate: эти возможности, темы Obsidian Observatory и Origami Atelier и 6 эмоций одного персонажа за один запуск (12 монет за 6 успешно созданных стикеров). 3D-look — статичная иллюстрация с объёмным видом.\n\n" +
   "Покупка на 30 дней за монеты: Standard 640, Luxury 1980, Ultimate 8760. Доступна раз в три календарных месяца на аккаунт.\n\n" +
   "🔍 <b>Где сохранённые стикеры</b>\n" +
   "Иконка стикеров в поле ввода сообщения → «Мои наборы». Управлять паками (переименовать, удалить) — через официального бота @Stickers.\n\n" +
@@ -1698,13 +1629,13 @@ const SYSTEM_CONTEXT = `Ты — дружелюбный помощник Telegra
 2) прямо в чате с ботом текстовыми командами: "/create описание" генерирует 4 картинки, а
 "/save название пака" сохраняет их как стикерпак. Стоимость генерации — 5 $ за картинку по умолчанию.
 Новым пользователям выдаётся 15 $ бесплатно. Есть три уровня Premium-подписки через Telegram Stars:
-Standard (21⭐ первый месяц, затем 32⭐) даёт 4 монеты за картинку, до 6 картинок за раз и +3 монеты в день;
+Standard (21⭐ первый месяц, затем 32⭐) даёт 4 монеты за картинку, до 6 картинок за раз, без ежедневных монетных подарков;
 Luxury (65⭐ первый месяц, затем 99⭐) даёт 3 монеты за картинку и до 10 картинок за раз;
 Ultimate (287⭐ первый месяц, затем 438⭐) даёт 2 монеты за картинку и до 12 картинок за раз.
 У Luxury и Ultimate ежедневных монетных бонусов нет. Подписки вручную продлеваются раз в 30 дней.
 В мини-приложении Luxury даёт тему Gold Atelier и быстрый выбор стиля генерации: вектор, 3D-look (объёмная глиняная иллюстрация), бумага и аниме.
-Ultimate включает эти возможности, тему Aurora Studio и набор из 6 эмоций: радость, грусть, удивление, любовь, злость, подмигивание. Пользователь вводит одну идею и включает этот режим перед генерацией. Цена — 12 монет за 6 успешных стикеров; за несозданные картинки монеты возвращаются.
-3D-look создаёт статичную иллюстрацию, не 3D-модель и не анимированный стикер. Независимые генерации не гарантируют полное совпадение деталей персонажа. Темы меняют интерфейс. Сохранённые шаблоны и избранные наборы убраны из интерфейса.
+Ultimate включает эти возможности, темы Obsidian Observatory и Origami Atelier и набор из 6 эмоций: радость, грусть, удивление, любовь, злость, подмигивание. Пользователь вводит одну идею и включает этот режим перед генерацией. Цена — 12 монет за 6 успешных стикеров; за несозданные картинки монеты возвращаются.
+В Ultimate доступен автоматический набор из 24 эмоций: максимум 48 монет, за несозданные стикеры — возврат. В приложении также доступны загрузка своих PNG/JPEG/WebP, выбор фона и приглашения в общий набор. Участники добавляют, владелец управляет набором. Прозрачный фон отделяется при возможности; если отделение не удалось, картинка не засчитывается. 3D-look создаёт статичную иллюстрацию, не 3D-модель и не анимированный стикер. Независимые генерации не гарантируют полное совпадение деталей персонажа. Темы меняют интерфейс. Сохранённые шаблоны и избранные наборы убраны из интерфейса.
 Подписки также можно купить за монеты в приложении: Standard 640, Luxury 1980, Ultimate 8760 на 30 дней. Покупка за монеты доступна раз в три календарных месяца на аккаунт для всех тарифов вместе; ограничение не относится к Stars.
 После сохранения стикеры сразу появляются в личном списке стикерпаков в
 Telegram: их можно найти через встроенный поиск стикеров в любом чате (иконка стикеров в поле ввода
@@ -1717,6 +1648,15 @@ async function handleChatMessage(message) {
   const chatId = message.chat.id;
   const fromId = message.from?.id;
   const text = message.text.trim();
+
+  const packInvite=text.match(/^\/start(?:@[A-Za-z0-9_]+)?\s+pack_([A-Za-z0-9_-]{43})$/);
+  if(packInvite){
+    if(message.chat.type!=='private')return;
+    if(await isAccountBanned(fromId)){await sendTelegramMessage(chatId,'Access restricted.');return;}
+    const url=new URL(MINI_APP_URL||'https://stickersai.netlify.app/');url.searchParams.set('invite',packInvite[1]);
+    await telegramApi('sendMessage',{chat_id:chatId,text:'You have been invited to a shared sticker pack. Open the app to review and join. / Вас пригласили в общий набор стикеров. Откройте приложение, чтобы вступить.',reply_markup:{inline_keyboard:[[{text:'Open shared pack / Открыть набор',web_app:{url:url.href}}]]}});
+    return;
+  }
 
   const OWNER_ID = process.env.OWNER_TELEGRAM_ID ? Number(process.env.OWNER_TELEGRAM_ID) : null;
   if (OWNER_ID && fromId === OWNER_ID) {
@@ -1816,6 +1756,10 @@ async function handleChatMessage(message) {
       return;
     }
     const description = createMatch[2].trim();
+    if (description.length > 4000) {
+      await sendTelegramMessage(chatId, "Please shorten the description to 4000 characters.");
+      return;
+    }
     const sub = await getOrCreateSubscription(fromId);
     const cfg = tierConfig(sub);
     const CHAT_GEN_COUNT = 4;
@@ -1852,7 +1796,7 @@ async function handleChatMessage(message) {
     let images;
     try {
       await sendTelegramMessage(chatId, `Генерирую ${requestedImages} стикера по описанию «${description}»… это может занять около минуты ✨`);
-      images = await generateStickerSet(description, requestedImages, undefined, { cfg });
+      images = await generateStickerSet(description, requestedImages, undefined, { cfg, userId: fromId });
     } catch (err) {
       await adjustBalance(fromId, cost, {
         type: "refund",
@@ -1881,7 +1825,7 @@ async function handleChatMessage(message) {
 
     lastGenerationByUser.set(fromId, { ids: images.map((i) => i.id), ts: Date.now() });
     for (const img of images) {
-      const buf = generatedCache.get(img.id);
+      const buf = await creator.getAsset(img.id, fromId);
       if (buf) await sendTelegramPhoto(chatId, buf);
     }
 
@@ -1975,6 +1919,7 @@ async function sendTelegramPhoto(chatId, pngBuffer) {
   form.append("photo", new Blob([pngBuffer], { type: "image/png" }), "sticker.png");
   await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
     method: "POST",
+    signal: AbortSignal.timeout(30_000),
     body: form,
   });
 }
@@ -1984,6 +1929,7 @@ app.get("/", (req, res) => {
 });
 
 app.listen(PORT, async () => {
+  creator.start();
   console.log(`✅ Server running on port ${PORT}`);
   if (!BOT_TOKEN || !TELEGRAM_WEBHOOK_SECRET) {
     console.warn("Telegram webhook registration skipped: required server secrets are missing");
