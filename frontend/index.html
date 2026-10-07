@@ -1108,6 +1108,28 @@
   }
   .prompt-draft-note { display:block; font-size:11px; color:var(--text-dim); margin-top:6px; }
   .prompt-draft-note[hidden] { display:none; }
+  .prompt-tools{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:10px;}
+  .prompt-tool{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-width:38px;min-height:38px;padding:7px 10px;border:1px solid var(--line);border-radius:12px;background:transparent;color:var(--text-dim);font:inherit;font-size:12px;cursor:pointer;touch-action:manipulation;}
+  .prompt-tool svg{width:17px;height:17px;flex-shrink:0;}
+  .prompt-tool:hover{color:var(--text);border-color:var(--accent,var(--gold));}
+  .prompt-tool:focus-visible{outline:2px solid var(--accent,var(--gold));outline-offset:3px;}
+  .prompt-tool:disabled{opacity:.4;cursor:default;}
+  .voice-toggle[aria-expanded="true"],.voice-primary{color:var(--text);background:var(--glass,rgba(127,127,127,.08));}
+  .prompt-counter{margin-inline-start:auto;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--text-dim);font-size:11px;}
+  .voice-panel{margin-top:12px;padding:14px;border:1px solid var(--line);border-radius:16px;background:var(--glass,rgba(127,127,127,.04));}
+  .voice-panel[hidden]{display:none;}
+  .voice-head,.voice-status-line{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .voice-panel label,.voice-notice,.voice-status-line,.voice-interim{font-size:12px;line-height:1.5;color:var(--text-dim);}
+  .voice-panel label{display:block;margin:8px 0 5px;}
+  .voice-notice{margin:10px 0;}
+  .voice-status-line{margin:8px 0;}
+  .voice-panel textarea{width:100%;box-sizing:border-box;min-height:76px;resize:vertical;}
+  .voice-interim{display:block;min-height:1.5em;margin-top:4px;font-style:italic;overflow-wrap:anywhere;}
+  .voice-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+  .voice-panel[data-recording="true"] .voice-status-line{color:var(--accent,var(--gold));}
+  #voiceTime{font-variant-numeric:tabular-nums;white-space:nowrap;}
+  #resultsSelectAll{margin-inline-start:auto;}
+  @media(max-width:360px){.prompt-tool{padding:7px 8px;font-size:11px;}.voice-panel{padding:10px;}}
 
   html[data-theme="luxury-gold"]{--bg:#100e0b;--panel:#1c1811;--panel-solid:#211c13;--gold:#ebc575;--text:#fcf4df;--text-dim:#c2b294;--line:#423521;--bg-glow-1:#ebc57515;--bg-glow-2:#9a6c1810;}
   html[data-theme="ultimate-aurora"]{--bg:#09121b;--panel:#121c2d;--panel-solid:#17243a;--gold:#9af0dc;--text:#eafaf8;--text-dim:#aac6d1;--line:#2c4d5f;--bg-glow-1:#88dec620;--bg-glow-2:#a89bfa20;}
@@ -1151,6 +1173,78 @@
   html[data-page-hidden="yes"] .prompt-box{animation-play-state:paused!important}
   @media(prefers-reduced-motion:reduce){html[data-theme="ultimate-aurora"] .prompt-box{animation:none!important}}
 
+  [hidden]{display:none!important;}
+  .creator-settings{border:1px solid var(--line);background:var(--panel);border-radius:18px;padding:14px 16px;margin:18px 0;}
+  .creator-settings>summary,.creator-text-tools>summary,.creator-pack-menu>summary{cursor:pointer;min-height:30px;font-size:13px;font-weight:700;color:var(--text);}
+  .creator-settings .premium-workspace{margin:18px 0 8px;padding:0;border:0;background:transparent;}
+  .creator-settings .count-row{margin:18px 0 0;}
+  .creator-settings small{color:var(--text-dim);font-size:12px;line-height:1.7;}
+  .creator-text-tools{position:relative;}
+  .creator-text-tools>summary{min-height:40px;display:flex;align-items:center;padding:0 10px;border:1px solid var(--line);border-radius:12px;list-style:none;}
+  .creator-text-tools>summary::after{content:'⌄';padding-inline-start:8px;}
+  .creator-tool-menu{position:absolute;inset-inline-start:0;top:44px;display:flex;gap:6px;flex-wrap:wrap;background:var(--panel-solid);padding:8px;border:1px solid var(--line);border-radius:14px;z-index:4;min-width:210px;box-shadow:0 12px 30px var(--overlay);}
+  .creator-import{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:14px 0;}
+  .creator-import input[type=file]{width:1px;height:1px;position:absolute;opacity:0;}
+  .creator-import label{cursor:pointer;min-height:44px;display:inline-flex;align-items:center;gap:8px;}
+  .creator-import label:has(+input:disabled){opacity:.5;pointer-events:none;}
+  .creator-import label:has(+input:focus-visible){outline:2px solid var(--gold);outline-offset:3px;}
+  .creator-import small{font-size:11px;color:var(--text-dim);}
+  .creator-settings input[type=color]{width:100%;height:44px;background:var(--panel);border:1px solid var(--line);border-radius:12px;}
+  .creator-progress,.creator-join{padding:16px;border:1px solid var(--line);border-radius:18px;margin:16px 0;background:var(--panel);}
+  .creator-progress progress{width:100%;height:10px;accent-color:var(--gold);}
+  .creator-progress p{font-size:13px;margin-bottom:0;color:var(--text-dim);}
+  .creator-pack-menu{flex-basis:100%;border-top:1px solid var(--line);padding-top:10px;}
+  .creator-pack-menu[open]{display:flex;flex-wrap:wrap;gap:8px;}
+  .creator-pack-menu summary{width:100%;}
+  .creator-member{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line);}
+  #creatorInviteModal input{margin:34px 0 16px;}
+  #creatorMembersList{max-height:55vh;overflow:auto;}
+  .chip-random{font:inherit;cursor:pointer;}
+  button.count-opt{font-family:inherit;color:var(--text-dim);}
+  button.count-opt.active{color:var(--bg);}
+  button.count-opt:focus-visible,details>summary:focus-visible{outline:2px solid var(--gold);outline-offset:3px;}
+  html[data-theme="ultimate-obsidian"]{--bg:#050811;--bg-glow-1:rgba(100,220,255,.1);--bg-glow-2:rgba(168,119,255,.13);--panel:#0d1422;--panel-solid:#101b2b;--line:#263749;--text:#f0f8ff;--text-dim:#afc0d0;--text-faint:#879fb8;--gold:#80dfff;--overlay:rgba(1,5,14,.85);}
+  html[data-theme="ultimate-obsidian"] .app{max-width:1040px;}
+  html[data-theme="ultimate-obsidian"] .main-tabs{background:var(--panel);border:1px solid var(--line);padding:8px;border-radius:22px;gap:8px;}
+  html[data-theme="ultimate-obsidian"] .prompt-box{border-radius:24px;padding:22px;box-shadow:inset 0 1px 0 #80dfff22;}
+  html[data-theme="ultimate-obsidian"] .generate-btn{border-radius:16px;background:linear-gradient(110deg,#80dfff,#b5adff);color:#07101b;}
+  html[data-theme="ultimate-obsidian"] .sticker-card{border-radius:24px;background:radial-gradient(ellipse at top,#19243a,var(--panel));border:1px solid var(--line);}
+  html[data-theme="ultimate-obsidian"] .sticker-card.selected{box-shadow:0 0 20px #80dfff30;}
+  html[data-theme="ultimate-obsidian"] .ai-orb-ring{border-color:#80dfff;}
+  html[data-theme="ultimate-origami"]{--bg:#faf4e9;--bg-glow-1:rgba(240,116,97,.11);--bg-glow-2:rgba(149,163,137,.11);--panel:#fffcf6;--panel-solid:#fffcf6;--line:#d7ccc0;--text:#28263a;--text-dim:#686072;--text-faint:#776f7e;--gold:#a64135;--overlay:rgba(44,30,35,.5);}
+  html[data-theme="ultimate-origami"] .app{max-width:1000px;padding-top:30px;}
+  html[data-theme="ultimate-origami"] .brand{font-size:19px;letter-spacing:-.03em;}
+  html[data-theme="ultimate-origami"] h1{font-family:Georgia,serif;font-weight:normal;font-size:clamp(30px,6vw,48px);}
+  html[data-theme="ultimate-origami"] .main-tabs{background:#e7dfef;border-radius:6px;padding:6px;gap:4px;border:0;box-shadow:3px 3px 0 #d3c8df;}
+  html[data-theme="ultimate-origami"] .main-tab{border-radius:4px;}
+  html[data-theme="ultimate-origami"] .prompt-box{border-radius:6px 6px 32px 6px;border:1px solid var(--line);box-shadow:6px 7px 0 #e8dfd0;padding:24px;}
+  html[data-theme="ultimate-origami"] .creator-settings{border-radius:6px;background:#f0eee0;}
+  html[data-theme="ultimate-origami"] .generate-btn{border-radius:6px;background:#a64135;color:#fff8ee;box-shadow:3px 4px 0 #dfb1a5;}
+  html[data-theme="ultimate-origami"] .sticker-card{border-radius:4px;padding:8px;background:#fffdf8;box-shadow:3px 4px 0 #e1d8c9;}
+  html[data-theme="ultimate-origami"] .sticker-card.selected{border-color:#a64135;box-shadow:3px 4px 0 #dfa79a;}
+  html[data-theme="ultimate-origami"] .library-pack{border-radius:6px;box-shadow:4px 5px 0 #e1d8c9;}
+  html[data-theme="ultimate-origami"] .footer-inner{border-radius:6px;}
+  @keyframes creatorUnfold{from{opacity:0;transform:translateY(12px) rotateX(12deg);}to{opacity:1;transform:none;}}
+  @keyframes creatorOrbit{from{box-shadow:0 0 0 0 #80dfff30;}to{box-shadow:0 0 0 10px transparent;}}
+  @media(prefers-reduced-motion:no-preference){
+    html[data-theme="ultimate-origami"][data-motion="full"] .sticker-card{animation:creatorUnfold .35s ease-out both;}
+    html[data-theme="ultimate-obsidian"][data-motion="full"] .sticker-card.selected{animation:creatorOrbit .6s ease-out;}
+  }
+  html[data-page-hidden="yes"] .sticker-card{animation-play-state:paused!important;}
+  @media(min-width:860px){
+    html[data-theme="ultimate-obsidian"] .app{padding-inline-start:160px;}
+    html[data-theme="ultimate-obsidian"] .main-tabs{position:fixed;top:130px;inset-inline-start:max(16px,calc((100vw - 1040px)/2));width:130px;display:flex;flex-direction:column;}
+    html[data-theme="ultimate-obsidian"] #createView,html[data-theme="ultimate-origami"] #createView{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);column-gap:28px;align-content:start;}
+    html[data-theme^="ultimate-"] #createView>*{grid-column:1;min-width:0;}
+    html[data-theme^="ultimate-"] #createView>h1{grid-column:1/-1;}
+    html[data-theme^="ultimate-"] #createView>#resultsTitle{grid-column:2;grid-row:2;align-self:start;margin-top:0;}
+    html[data-theme^="ultimate-"] #createView>#grid{grid-column:2;grid-row:3/10;align-self:start;}
+    html[data-theme^="ultimate-"] #createView>#emptyState{grid-column:2;grid-row:3/10;}
+    html[data-theme^="ultimate-"] #createView>#genHintBanner{grid-column:1/-1;}
+    html[data-theme="ultimate-origami"] .grid{gap:18px;}
+  }
+  @media(max-width:420px){.creator-import small{flex-basis:100%;}.creator-text-tools>summary{font-size:11px;padding-inline:8px;}html[data-theme="ultimate-origami"] .prompt-box{padding:16px;}}
+
 </style>
 </head>
 <body>
@@ -1182,19 +1276,42 @@
     <button class="main-tab" id="tasksTab" type="button" role="tab" aria-selected="false">🎁 Earn</button>
   </nav>
 
+  <section class="creator-join" id="creatorJoin" hidden><button type="button" class="library-action" id="creatorJoinButton">Join pack</button></section>
   <main id="createView" role="tabpanel" aria-labelledby="createTab">
 
   <h1 id="titleText">Опиши идею — получи стикеры</h1>
-  <p class="sub" id="subText">Например: «космический кот-астронавт» или «дракон-бариста».</p>
+  <p class="sub" id="subText" hidden>Например: «космический кот-астронавт» или «дракон-бариста».</p>
 
   <div class="prompt-box">
-    <textarea id="promptInput" rows="2"></textarea>
+    <textarea id="promptInput" rows="2" maxlength="4000"></textarea>
+    <div class="prompt-tools" role="group" aria-label="Description tools">
+      <button id="voiceToggle" class="prompt-tool voice-toggle" type="button" aria-expanded="false" aria-controls="voicePanel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg><span></span></button>
+      <details class="creator-text-tools"><summary id="creatorToolsLabel">Text tools</summary><div class="creator-tool-menu">
+      <button id="promptUndo" class="prompt-tool" type="button">↶</button>
+      <button id="promptRedo" class="prompt-tool" type="button">↷</button>
+      <button id="promptCopy" class="prompt-tool" type="button"><span></span></button>
+      <button id="promptClear" class="prompt-tool" type="button"><span></span></button>
+      </div></details>
+      <small id="promptCounter" class="prompt-counter" aria-live="off">0 / 4000</small>
+    </div>
+    <section class="voice-panel" id="voicePanel" hidden aria-labelledby="voiceHeading">
+      <div class="voice-head"><strong id="voiceHeading"></strong><button class="prompt-tool" id="voiceClose" type="button">×</button></div>
+      <label id="voiceLanguageLabel" for="voiceLanguage"></label><select class="settings-select" id="voiceLanguage"></select>
+      <p class="voice-notice" id="voiceNotice"></p>
+      <div class="voice-status-line"><span id="voiceStatus" role="status" aria-live="polite"></span><span id="voiceTime" aria-live="off"></span></div>
+      <textarea id="voicePreview" rows="3" maxlength="4000" aria-labelledby="voiceHeading"></textarea>
+      <small id="voiceInterim" class="voice-interim"></small>
+      <div class="voice-actions"><button class="prompt-tool voice-primary" id="voiceStart" type="button"></button><button class="prompt-tool" id="voiceStop" type="button"></button><button class="prompt-tool voice-primary" id="voiceInsert" type="button"></button></div>
+    </section>
     <small class="prompt-draft-note" id="promptDraftNote" hidden></small>
     <div class="chips" id="chipsRow"></div>
     <div class="recent-prompt-row" id="recentPromptRow" style="display:none"></div>
   </div>
 
 
+  <div class="creator-import"><label class="prompt-tool" for="creatorUpload"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5"/></svg><span id="creatorUploadLabel">Upload image</span></label><input id="creatorUpload" type="file" accept="image/png,image/jpeg,image/webp"><small id="creatorUploadHint"></small></div>
+  <details class="creator-settings" id="creatorSettings"><summary id="creatorSettingsLabel">Creation settings</summary>
+    <div class="settings-field"><label id="creatorBackgroundLabel" for="creatorBackground">Background</label><select class="settings-select" id="creatorBackground"><option value="white">White</option><option value="black">Black</option><option value="color">Custom colour</option><option value="transparent">Transparent</option></select><input type="color" id="creatorBackgroundColor" value="#ffffff" aria-labelledby="creatorBackgroundLabel" hidden><small id="creatorTransparentHint" hidden></small></div>
   <section class="premium-workspace" id="premiumWorkspace" hidden aria-labelledby="premiumWorkspaceTitle">
     <h2 id="premiumWorkspaceTitle"></h2><p id="premiumWorkspaceHint"></p>
     <label class="premium-quick-field" for="premiumStyle"><span id="premiumStyleLabel"></span>
@@ -1207,6 +1324,11 @@
     </label>
   </section>
   <div class="count-row" id="countRow"></div>
+
+    <div class="settings-field" id="creatorModeRow" hidden><label for="creatorMode" id="creatorModeLabel">Mode</label><select class="settings-select" id="creatorMode"><option value="single">Individual stickers</option><option value="pack24">24 emotions · Ultimate</option></select></div>
+    <div class="settings-field" id="creatorPackFields" hidden><input class="settings-select" id="creatorPackName" maxlength="64" placeholder="Pack title" aria-label="Pack title"><small id="creatorPackHint"></small></div>
+  </details>
+  <section class="creator-progress" id="creatorProgress" hidden aria-live="polite"><progress id="creatorProgressBar" value="0" max="24"></progress><p id="creatorProgressText"></p></section>
   <small class="free-daily-hint" id="freeDailyHint" hidden></small>
 
   <div class="cost-hint">
@@ -1220,6 +1342,7 @@
 
   <div class="section-title" id="resultsTitle" style="display:none;">
     <h2 id="resultsLabel">Результаты</h2>
+    <button class="prompt-tool" id="resultsSelectAll" type="button"></button>
   </div>
 
   <div class="gen-hint-banner" id="genHintBanner" style="display:none;">
@@ -1402,7 +1525,7 @@
         <option value="light">Light</option><option value="original">Dark · Original</option>
         <option value="oled">Pure Black</option><option value="editorial">Editorial</option>
         <option value="violet">Violet</option><option value="graphite">Graphite</option>
-        <option value="luxury-gold">Gold Atelier · Luxury</option><option value="ultimate-aurora">Aurora Studio · Ultimate</option>
+        <option value="luxury-gold">Gold Atelier · Luxury</option><option value="ultimate-origami">Origami Atelier · Ultimate</option><option value="ultimate-obsidian">Obsidian Observatory · Ultimate</option>
       </select>
     </div>
     <div class="settings-field">
@@ -1501,6 +1624,8 @@
 <div class="settings-field"><label id="adminReasonLabel" for="adminReason">Note (optional)</label><input class="settings-select" id="adminReason" maxlength="300"></div>
 <div style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0;"><button class="game-start-btn" style="width:auto;flex:1;" id="adminGrant" type="button">Grant plan</button><button class="game-close-btn" id="adminRevoke" type="button">Revoke plan</button><button class="game-close-btn" id="adminSet" type="button">Set coins</button><button class="game-close-btn" id="adminBan" type="button">Ban</button><button class="game-close-btn" id="adminUnban" type="button">Unban</button></div>
 <p id="adminStatus" role="status" aria-live="polite" style="white-space:pre-wrap;overflow-wrap:anywhere;"></p></div></div>
+<div class="modal-overlay" id="creatorInviteModal"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="creatorInviteCopy"><button class="modal-close" type="button" id="creatorInviteClose" aria-label="Close">×</button><input class="settings-select" id="creatorInviteLink" readonly aria-label="Invitation link"><button class="library-action" type="button" id="creatorInviteCopy">Copy invitation</button></div></div>
+<div class="modal-overlay" id="creatorMembersModal"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="creatorMembersTitle"><button class="modal-close" type="button" id="creatorMembersClose" aria-label="Close">×</button><h2 id="creatorMembersTitle">Participants</h2><div id="creatorMembersList"></div></div></div>
 <script>
   const tg = window.Telegram?.WebApp;
   if (tg) { tg.ready(); tg.expand(); }
@@ -1655,7 +1780,9 @@
     const checkbox=document.getElementById('premiumEmotionSet');checkbox.checked=generationPreset==='emotions';checkbox.disabled=generationBusy||!ultimate;
     document.getElementById('premiumEmotionLabel').textContent=t[8];document.getElementById('premiumEmotionHint').textContent=t[9];
     const gold=document.querySelector('#themeSelect option[value="luxury-gold"]'),aurora=document.querySelector('#themeSelect option[value="ultimate-aurora"]');
-    gold.disabled=!unlocked;aurora.disabled=!ultimate;gold.textContent='Gold Atelier · Luxury'+(unlocked?'':' 🔒');aurora.textContent='Aurora Studio · Ultimate'+(ultimate?'':' 🔒');
+    gold.disabled=!unlocked;gold.textContent='Gold Atelier · Luxury'+(unlocked?'':' 🔒');
+    for(const [value,name] of [['ultimate-obsidian','Obsidian Observatory'],['ultimate-origami','Origami Atelier']]){const option=document.querySelector('#themeSelect option[value="'+value+'"]');option.disabled=!ultimate;option.textContent=name+' · Ultimate'+(ultimate?'':' 🔒');}
+    window.creatorTools?.render();
   }
   document.addEventListener('visibilitychange',()=>{
     document.documentElement.dataset.pageHidden=document.hidden?'yes':'no';
@@ -2943,6 +3070,7 @@
 
   const RECENT_PROMPTS_KEY = 'stickerRecentPrompts';
   function renderRecentPrompts(){
+    const removedRow=document.getElementById('recentPromptRow');removedRow.replaceChildren();removedRow.style.display='none';return;
     const row = document.getElementById('recentPromptRow');
     if (!row) return;
     let prompts = [];
@@ -2957,7 +3085,7 @@
       chip.style.animationDelay = (i * 35) + 'ms';
       chip.setAttribute('aria-label', lang === 'ru' ? 'Повторить идею: ' + prompt : 'Reuse idea: ' + prompt);
       chip.addEventListener('click', () => {
-        const input = document.getElementById('promptInput'); input.value = prompt; input.focus();
+        const input = document.getElementById('promptInput'); input.value = prompt; input.dispatchEvent(new Event('input',{bubbles:true})); input.focus();
       });
       row.appendChild(chip);
     });
@@ -3111,37 +3239,33 @@
 
     const chipsRow = document.getElementById('chipsRow');
     chipsRow.innerHTML = '';
-    s.chips.forEach(c => {
-      const chip = document.createElement('div');
-      chip.className = 'chip';
-      chip.textContent = c.label;
-      chip.addEventListener('click', () => { const input=document.getElementById('promptInput');input.value=c.fill;input.dispatchEvent(new Event('input',{bubbles:true})); });
-      chipsRow.appendChild(chip);
-    });
-    const randomChip = document.createElement('div');
+    const randomChip = document.createElement('button');randomChip.type='button';
     randomChip.className = 'chip chip-random';
     randomChip.textContent = s.randomIdea;
     randomChip.addEventListener('click', fillRandomPrompt);
     chipsRow.appendChild(randomChip);
     renderRecentPrompts();
     renderStudio();
+    window.promptTools?.render();
 
     renderBalance();
+    window.creatorTools?.render();
     if (premiumModal.classList.contains('visible')) renderPremiumModal();
   }
 
   // ---------- Theme ----------
   function applyTheme(theme) {
-    const supportedThemes = ['original','violet','light','graphite','oled','editorial','luxury-gold','ultimate-aurora'];
+    const supportedThemes = ['original','violet','light','graphite','oled','editorial','luxury-gold','ultimate-obsidian','ultimate-origami'];
     if (theme === 'dark') theme = 'original';
+    if (theme === 'ultimate-aurora') theme='ultimate-obsidian';
     if (!supportedThemes.includes(theme)) theme = 'original';
     const preferredTheme=theme;
-    if ((theme==='luxury-gold' && !premiumStudioAccess()) || (theme==='ultimate-aurora' && !premiumStudioAccess(true))) theme='original';
+    if ((theme==='luxury-gold' && !premiumStudioAccess()) || (theme.startsWith('ultimate-') && !premiumStudioAccess(true))) theme='original';
     document.documentElement.setAttribute('data-theme', theme);
     document.getElementById('themeSelect').value = theme;
     try { localStorage.setItem('stickerTheme', preferredTheme); } catch (e) { /* optional preference */ }
     const chromeColors = {
-      original:'#0a0a0b',violet:'#100d1b',light:'#f4f3ef',graphite:'#111315',oled:'#000000',editorial:'#f9f6ee','luxury-gold':'#100e0b','ultimate-aurora':'#09121b',
+      original:'#0a0a0b',violet:'#100d1b',light:'#f4f3ef',graphite:'#111315',oled:'#000000',editorial:'#f9f6ee','luxury-gold':'#100e0b','ultimate-obsidian':'#050811','ultimate-origami':'#faf4e9',
     };
     const chromeColor = chromeColors[theme];
     try {
@@ -3219,6 +3343,152 @@
   window.addEventListener('pagehide', savePromptDraft);
   promptInputEl.addEventListener('focus', () => promptBoxEl.classList.add('focused'));
   promptInputEl.addEventListener('blur', () => promptBoxEl.classList.remove('focused'));
+
+  // BEGIN LOCAL PROMPT TOOLS
+// Assembled inline into index.html. No microphone access or recognition on load.
+(() => {
+  const labels = {
+    en:['Dictate','Voice description','Speech language','App language','Start','Stop','Add to description','Review the text before adding it. Your browser may send audio to its speech service.','Ready','Listening…','Starting…','Finishing…','Check the text, then add it.','Voice recognition is unavailable here. Use the microphone on your keyboard.','Microphone permission was denied. Allow access in browser settings or use keyboard dictation.','Speech service unavailable. Try again or use keyboard dictation.','No speech detected. Try again.','Could not start dictation. Try again.','Description limit reached.','Copy','Copied','Select the text and copy it manually.','Undo','Redo','Clear','Select all','Clear selection','Close','Description tools'],
+    ru:['Наговорить','Описание голосом','Язык речи','Как в приложении','Начать','Стоп','Добавить в описание','Проверь текст перед добавлением. Браузер может передать аудио своему сервису распознавания.','Готово к записи','Слушаю…','Подключение…','Завершаю…','Проверь текст и добавь его.','Здесь распознавание недоступно. Используй микрофон на клавиатуре.','Доступ к микрофону запрещён. Разреши его в браузере или используй диктовку клавиатуры.','Сервис речи недоступен. Попробуй ещё раз или используй диктовку клавиатуры.','Речь не обнаружена. Попробуй ещё раз.','Не удалось начать диктовку. Попробуй ещё раз.','Достигнут лимит описания.','Копировать','Скопировано','Выдели текст и скопируй вручную.','Отменить','Повторить','Очистить','Выбрать все','Снять выбор','Закрыть','Инструменты описания'],
+    es:['Dictar','Descripción por voz','Idioma de voz','Idioma de la app','Iniciar','Detener','Añadir a descripción','Revisa el texto. El navegador puede enviar audio a su servicio de voz.','Listo','Escuchando…','Iniciando…','Finalizando…','Revisa y añade el texto.','Voz no disponible. Usa el micrófono del teclado.','Permiso de micrófono denegado. Actívalo o usa el teclado.','Servicio no disponible. Reintenta o usa el teclado.','No se detectó voz. Reintenta.','No se pudo iniciar. Reintenta.','Límite de descripción alcanzado.','Copiar','Copiado','Selecciona y copia el texto manualmente.','Deshacer','Rehacer','Borrar','Seleccionar todo','Quitar selección','Cerrar','Herramientas de descripción'],
+    zh:['语音输入','语音描述','语音语言','应用语言','开始','停止','添加到描述','添加前请检查文字。浏览器可能将音频发送到其语音服务。','就绪','正在聆听…','正在启动…','正在结束…','检查文字后添加。','此处不支持语音识别，请使用键盘的麦克风。','麦克风权限被拒绝，请允许访问或使用键盘语音输入。','语音服务不可用，请重试或使用键盘。','未检测到语音，请重试。','无法启动语音输入，请重试。','描述已达长度上限。','复制','已复制','请选择文字并手动复制。','撤销','重做','清空','全选','取消选择','关闭','描述工具'],
+    hi:['बोलकर लिखें','आवाज़ से विवरण','बोली की भाषा','ऐप की भाषा','शुरू','रोकें','विवरण में जोड़ें','जोड़ने से पहले पाठ देखें। ब्राउज़र ऑडियो अपनी वॉइस सेवा को भेज सकता है।','तैयार','सुन रहे हैं…','शुरू हो रहा है…','समाप्त हो रहा है…','पाठ जाँचें और जोड़ें।','यहाँ वॉइस उपलब्ध नहीं। कीबोर्ड का माइक्रोफ़ोन इस्तेमाल करें।','माइक्रोफ़ोन अनुमति नहीं मिली। अनुमति दें या कीबोर्ड इस्तेमाल करें।','वॉइस सेवा उपलब्ध नहीं। फिर कोशिश करें या कीबोर्ड इस्तेमाल करें।','आवाज़ नहीं मिली। फिर कोशिश करें।','शुरू नहीं हुआ। फिर कोशिश करें।','विवरण की सीमा पूरी हुई।','कॉपी','कॉपी हुआ','पाठ चुनें और खुद कॉपी करें।','पूर्ववत','फिर करें','साफ़ करें','सब चुनें','चयन हटाएँ','बंद करें','विवरण उपकरण'],
+    ar:['إملاء','وصف صوتي','لغة الكلام','لغة التطبيق','بدء','إيقاف','إضافة إلى الوصف','راجع النص قبل إضافته. قد يرسل المتصفح الصوت إلى خدمة التعرف الخاصة به.','جاهز','جارٍ الاستماع…','جارٍ البدء…','جارٍ الإنهاء…','راجع النص ثم أضفه.','التعرف الصوتي غير متاح هنا. استخدم ميكروفون لوحة المفاتيح.','رُفض إذن الميكروفون. اسمح به أو استخدم لوحة المفاتيح.','خدمة الصوت غير متاحة. أعد المحاولة أو استخدم لوحة المفاتيح.','لم يُكتشف كلام. أعد المحاولة.','تعذر البدء. أعد المحاولة.','تم بلوغ حد الوصف.','نسخ','تم النسخ','حدد النص وانسخه يدويًا.','تراجع','إعادة','مسح','تحديد الكل','إلغاء التحديد','إغلاق','أدوات الوصف'],
+    pt:['Ditar','Descrição por voz','Idioma da fala','Idioma do app','Iniciar','Parar','Adicionar à descrição','Revise o texto. O navegador pode enviar áudio ao seu serviço de voz.','Pronto','Ouvindo…','Iniciando…','Finalizando…','Revise e adicione o texto.','Voz indisponível aqui. Use o microfone do teclado.','Permissão de microfone negada. Permita o acesso ou use o teclado.','Serviço de voz indisponível. Tente novamente ou use o teclado.','Nenhuma fala detectada. Tente novamente.','Não foi possível iniciar. Tente novamente.','Limite de descrição atingido.','Copiar','Copiado','Selecione e copie o texto manualmente.','Desfazer','Refazer','Limpar','Selecionar tudo','Limpar seleção','Fechar','Ferramentas de descrição'],
+    fr:['Dicter','Description vocale','Langue parlée','Langue de l’app','Démarrer','Arrêter','Ajouter à la description','Vérifiez le texte. Le navigateur peut envoyer l’audio à son service vocal.','Prêt','Écoute…','Démarrage…','Finalisation…','Vérifiez puis ajoutez le texte.','Reconnaissance indisponible. Utilisez le micro du clavier.','Micro refusé. Autorisez-le ou utilisez le clavier.','Service vocal indisponible. Réessayez ou utilisez le clavier.','Aucune parole détectée. Réessayez.','Démarrage impossible. Réessayez.','Limite de description atteinte.','Copier','Copié','Sélectionnez le texte et copiez-le manuellement.','Annuler','Rétablir','Effacer','Tout sélectionner','Désélectionner','Fermer','Outils de description'],
+    ja:['音声入力','音声で説明','音声の言語','アプリの言語','開始','停止','説明に追加','追加する前に確認してください。ブラウザーが音声を音声サービスに送信する場合があります。','準備完了','聞き取り中…','開始中…','終了中…','文字を確認して追加してください。','ここでは音声認識を利用できません。キーボードのマイクを使ってください。','マイクが許可されていません。許可するかキーボードを使ってください。','音声サービスを利用できません。再試行するかキーボードを使ってください。','音声が検出されませんでした。再試行してください。','開始できませんでした。再試行してください。','説明の文字数制限に達しました。','コピー','コピーしました','文字を選択して手動でコピーしてください。','元に戻す','やり直す','消去','すべて選択','選択解除','閉じる','説明ツール'],
+    de:['Diktieren','Sprachbeschreibung','Sprache','App-Sprache','Starten','Stoppen','Zur Beschreibung hinzufügen','Prüfe den Text. Der Browser kann Audio an seinen Sprachdienst senden.','Bereit','Hört zu…','Startet…','Beendet…','Text prüfen und hinzufügen.','Spracherkennung nicht verfügbar. Nutze das Tastaturmikrofon.','Mikrofon verweigert. Erlaube den Zugriff oder nutze die Tastatur.','Sprachdienst nicht verfügbar. Erneut versuchen oder Tastatur nutzen.','Keine Sprache erkannt. Erneut versuchen.','Start fehlgeschlagen. Erneut versuchen.','Beschreibungslimit erreicht.','Kopieren','Kopiert','Text auswählen und manuell kopieren.','Rückgängig','Wiederholen','Leeren','Alle auswählen','Auswahl löschen','Schließen','Beschreibungswerkzeuge'],
+    id:['Dikte','Deskripsi suara','Bahasa ucapan','Bahasa aplikasi','Mulai','Berhenti','Tambahkan ke deskripsi','Periksa teks. Browser dapat mengirim audio ke layanan suaranya.','Siap','Mendengarkan…','Memulai…','Menyelesaikan…','Periksa lalu tambahkan teks.','Pengenalan suara tidak tersedia. Gunakan mikrofon keyboard.','Izin mikrofon ditolak. Izinkan atau gunakan keyboard.','Layanan suara tidak tersedia. Coba lagi atau gunakan keyboard.','Tidak ada suara terdeteksi. Coba lagi.','Tidak dapat memulai. Coba lagi.','Batas deskripsi tercapai.','Salin','Disalin','Pilih teks dan salin secara manual.','Urungkan','Ulangi','Hapus','Pilih semua','Batalkan pilihan','Tutup','Alat deskripsi'],
+    tr:['Dikte et','Sesli açıklama','Konuşma dili','Uygulama dili','Başlat','Durdur','Açıklamaya ekle','Metni kontrol et. Tarayıcı sesi kendi konuşma hizmetine gönderebilir.','Hazır','Dinleniyor…','Başlatılıyor…','Bitiriliyor…','Metni kontrol edip ekle.','Ses tanıma burada kullanılamıyor. Klavye mikrofonunu kullan.','Mikrofon izni reddedildi. İzin ver veya klavyeyi kullan.','Konuşma hizmeti kullanılamıyor. Tekrar dene veya klavyeyi kullan.','Konuşma algılanmadı. Tekrar dene.','Başlatılamadı. Tekrar dene.','Açıklama sınırına ulaşıldı.','Kopyala','Kopyalandı','Metni seçip elle kopyala.','Geri al','Yinele','Temizle','Tümünü seç','Seçimi temizle','Kapat','Açıklama araçları'],
+  };
+  const $ = id => document.getElementById(id);
+  const text = index => (labels[lang] || labels.en)[index];
+  const locales = { en:'en-US',ru:'ru-RU',es:'es-ES',zh:'zh-CN',hi:'hi-IN',ar:'ar-SA',pt:'pt-BR',fr:'fr-FR',ja:'ja-JP',de:'de-DE',id:'id-ID',tr:'tr-TR' };
+  const input = $('promptInput'), preview = $('voicePreview'), panel = $('voicePanel');
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const MAX = 4000;
+  let active = null, state = 'idle', statusIndex = Recognition ? 8 : 13;
+  let undo = [], redo = [], previous = input.value, restoring = false;
+  const trim = value => {
+    const sliced = String(value).slice(0,MAX);
+    return /[\uD800-\uDBFF]$/.test(sliced) ? sliced.slice(0,-1) : sliced;
+  };
+  const join = (a,b) => [a.trim(),b.trim()].filter(Boolean).join(' ');
+  const language = $('voiceLanguage');
+  language.add(new Option('', 'auto'));
+  for (const option of $('languageSelect').options) language.add(new Option(option.textContent,option.value));
+  const savedLanguage = safeGetItem('stickerSpeechLanguage');
+  language.value = Object.hasOwn(locales,savedLanguage) ? savedLanguage : 'auto';
+  function selectionIndices() {
+    return [...document.querySelectorAll('#grid .sticker-card')].flatMap((card,i) => card.classList.contains('image-error') ? [] : [i]);
+  }
+  function resultSelection() {
+    const indices = selectionIndices();
+    const all = indices.length > 0 && indices.every(i=>selectedIndices.has(i));
+    $('resultsSelectAll').textContent = text(all ? 26 : 25);
+    $('resultsSelectAll').disabled = !indices.length || generationBusy;
+  }
+  function render() {
+    $('voiceToggle').querySelector('span').textContent = text(0);
+    $('voiceToggle').setAttribute('aria-label',text(0));
+    $('voiceHeading').textContent=text(1);
+    $('voiceLanguageLabel').textContent=text(2);language.options[0].textContent=text(3);
+    $('voiceStart').textContent=text(4);$('voiceStop').textContent=text(5);$('voiceInsert').textContent=text(6);
+    $('voiceNotice').textContent=text(7);$('voiceStatus').textContent=text(statusIndex);
+    $('voiceClose').setAttribute('aria-label',text(27));
+    for(const[id,n]of [['promptCopy',19],['promptClear',24]])$(id).querySelector('span').textContent=text(n);
+    for(const[id,n]of [['promptUndo',22],['promptRedo',23],['promptCopy',19],['promptClear',24]]){$(id).title=text(n);$(id).setAttribute('aria-label',text(n));}
+    document.querySelector('.prompt-tools').setAttribute('aria-label',text(28));
+    $('promptCounter').textContent=input.value.length+' / '+MAX;
+    $('promptUndo').disabled=!undo.length||!!active;
+    $('promptRedo').disabled=!redo.length||!!active;
+    $('promptClear').disabled=!input.value||!!active;
+    $('promptCopy').disabled=!input.value.trim();
+    $('voiceStart').disabled=!Recognition||!!active||generationBusy||accountBanned;
+    $('voiceStop').disabled=!active||state==='stopping';
+    $('voiceInsert').disabled=!!active||!preview.value.trim()||input.value.length>=MAX;
+    language.disabled=!!active;preview.readOnly=!!active;input.readOnly=!!active;
+    panel.dataset.recording=String(state==='listening');
+    resultSelection();
+  }
+  function change(value) {
+    restoring=true;input.value=trim(value);input.dispatchEvent(new Event('input',{bubbles:true}));restoring=false;
+    input.focus();input.setSelectionRange(input.value.length,input.value.length);render();
+  }
+  input.addEventListener('input',()=>{
+    if(active) finish(12,true);
+    input.value=trim(input.value);
+    savePromptDraft();
+    if(!restoring && input.value!==previous){undo.push(previous);if(undo.length>20)undo.shift();redo=[];}
+    previous=input.value;render();
+  });
+  $('promptUndo').addEventListener('click',()=>{if(active||!undo.length)return;redo.push(input.value);change(undo.pop());});
+  $('promptRedo').addEventListener('click',()=>{if(active||!redo.length)return;undo.push(input.value);change(redo.pop());});
+  $('promptClear').addEventListener('click',()=>{if(!active){input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();}});
+  $('promptCopy').addEventListener('click',async()=>{
+    try{if(!navigator.clipboard?.writeText)throw new Error('Unavailable');await navigator.clipboard.writeText(input.value);showToast(text(20));}
+    catch{input.focus();input.select();showToast(text(21));}
+  });
+  function finish(index,abort=false) {
+    const session=active;active=null;state='idle';statusIndex=index;
+    if(session){clearTimeout(session.startTimer);clearTimeout(session.stopTimer);clearTimeout(session.limitTimer);clearInterval(session.clock);
+      session.recognition.onstart=session.recognition.onresult=session.recognition.onerror=session.recognition.onend=null;
+      if(abort)try{session.recognition.abort();}catch{/* already stopped */}
+    }
+    $('voiceInterim').textContent='';$('voiceTime').textContent='';render();
+  }
+  function stop() {
+    if(!active||state==='stopping')return;
+    const session=active;state='stopping';statusIndex=11;render();
+    clearTimeout(session.startTimer);clearTimeout(session.limitTimer);clearInterval(session.clock);
+    session.stopTimer=setTimeout(()=>{if(active===session)finish(preview.value.trim()?12:8,true);},5000);
+    try{session.recognition.stop();}catch{finish(preview.value.trim()?12:8,true);}
+  }
+  $('voiceStart').addEventListener('click',()=>{
+    if(!Recognition||active||generationBusy||accountBanned)return;
+    let recognition;try{recognition=new Recognition();}catch{finish(17);return;}
+    const session={recognition,prefix:preview.value.trim()};active=session;state='starting';statusIndex=10;
+    recognition.lang=locales[language.value==='auto'?lang:language.value]||'en-US';
+    recognition.continuous=true;recognition.interimResults=true;recognition.maxAlternatives=1;
+    recognition.onstart=()=>{if(active!==session)return;clearTimeout(session.startTimer);state='listening';statusIndex=9;
+      const started=Date.now();session.clock=setInterval(()=>{$('voiceTime').textContent=Math.min(60,Math.floor((Date.now()-started)/1000))+' / 60 s';},1000);
+      session.limitTimer=setTimeout(stop,60000);render();};
+    recognition.onresult=event=>{if(active!==session)return;const finals=[],interim=[];
+      for(let i=0;i<event.results.length;i++){const result=event.results[i];const transcript=result?.[0]?.transcript;if(typeof transcript==='string')(result.isFinal?finals:interim).push(transcript);}
+      const value=join(session.prefix,finals.join(' '));preview.value=trim(value);$('voiceInterim').textContent=trim(interim.join(' '));
+      if(value.length>=MAX){stop();statusIndex=18;render();}
+    };
+    recognition.onerror=event=>{if(active!==session)return;const error=event.error;finish(error==='not-allowed'||error==='service-not-allowed'||error==='audio-capture'?14:error==='network'?15:error==='no-speech'?16:17,true);};
+    recognition.onend=()=>{if(active===session)finish(preview.value.trim()?12:16);};
+    session.startTimer=setTimeout(()=>{if(active===session)finish(15,true);},15000);render();
+    try{recognition.start();}catch{finish(17,true);}
+  });
+  $('voiceStop').addEventListener('click',stop);
+  $('voiceToggle').addEventListener('click',()=>{
+    const opening=panel.hidden;if(!opening&&active)finish(preview.value.trim()?12:8,true);
+    panel.hidden=!opening;$('voiceToggle').setAttribute('aria-expanded',String(opening));render();
+  });
+  $('voiceClose').addEventListener('click',()=>{if(active)finish(preview.value.trim()?12:8,true);panel.hidden=true;$('voiceToggle').setAttribute('aria-expanded','false');$('voiceToggle').focus();});
+  language.addEventListener('change',()=>{safeSetItem('stickerSpeechLanguage',language.value);});
+  preview.addEventListener('input',()=>{preview.value=trim(preview.value);render();});
+  $('voiceInsert').addEventListener('click',()=>{
+    if(active||!preview.value.trim())return;
+    const full=join(input.value,preview.value),value=trim(full);
+    if(value.length<full.length){statusIndex=18;render();return;}// Keep transcript intact so the user can shorten it.
+    input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));preview.value='';statusIndex=8;
+    panel.hidden=true;$('voiceToggle').setAttribute('aria-expanded','false');input.focus();render();
+  });
+  $('resultsSelectAll').addEventListener('click',()=>{
+    if(generationBusy)return;const indices=selectionIndices();
+    if(indices.length&&indices.every(i=>selectedIndices.has(i)))selectedIndices.clear();else selectedIndices=new Set(indices);
+    document.querySelectorAll('#grid .sticker-card').forEach((card,i)=>card.classList.toggle('selected',selectedIndices.has(i)));updateFooter();
+  });
+  document.addEventListener('visibilitychange',()=>{if(document.hidden&&active)finish(preview.value.trim()?12:8,true);});
+  window.addEventListener('pagehide',()=>{if(active)finish(preview.value.trim()?12:8,true);});
+  window.promptTools={render,resultSelection,beforeGeneration(){if(!active)return true;stop();showToast(text(12));return false;}};
+})();
+
+  // END LOCAL PROMPT TOOLS
 
   // ---------- Token balance ----------
   const BALANCE_KEY = 'stickerTokens';
@@ -3329,8 +3599,10 @@
     if (typeof renderBalance === 'function') renderBalance();
     const costText = document.getElementById('costText');
     if (costText && STR[lang]) costText.innerHTML = STR[lang].cost(genCost(genCount));
+    window.creatorTools?.render();
   }
   function renderBalance() {
+    window.promptTools?.render();
     const s = STR[lang];
     const b = getBalance();
     document.getElementById('balanceNum').textContent = b;
@@ -3351,6 +3623,7 @@
       btn.disabled = false;
       document.getElementById('genBtnText').textContent = s.generate;
     }
+    window.creatorTools?.render();
   }
 
   document.getElementById('balanceBtn').addEventListener('click', openGame);
@@ -3411,13 +3684,13 @@
       : maxImages;
     genCount = Math.min(genCount, Math.max(1, selectableMax));
     [1, 2, 3, 4, 6, 8, 10, 12].filter(n => n <= maxImages).forEach(n => {
-      const el = document.createElement('div');
+      const el = document.createElement('button');el.type='button';
       const unavailable = freeDailyLimitApplies() && n > freeDailyState.remaining;
       el.className = 'count-opt' + (n === genCount ? ' active' : '') + (unavailable ? ' is-disabled' : '');
       el.textContent = n;
-      el.setAttribute('aria-disabled', String(unavailable));
+      el.setAttribute('aria-disabled', String(unavailable));el.disabled=unavailable;el.setAttribute('aria-pressed',String(n===genCount));
       el.addEventListener('click', () => {
-        if (unavailable || generationBusy) return;
+        if (unavailable || generationBusy || window.creatorTools?.busy()) return;
         genCount = n;
         renderCountRow();
         document.getElementById('costText').innerHTML = STR[lang].cost(genCost(genCount));
@@ -3437,6 +3710,8 @@
 
   generateBtn.addEventListener('click', async () => {
     if(generationBusy)return;
+    if(window.creatorTools?.beforeGenerate())return;
+    if(window.promptTools && !window.promptTools.beforeGeneration())return;
     renderStudio();renderCountRow();
     const s = STR[lang];
     const prompt = document.getElementById('promptInput').value.trim();
@@ -3448,7 +3723,7 @@
     if (getBalance() < cost) { openGame(); return; }
     rememberPrompt(prompt);
 
-    generationBusy=true;renderStudio();
+    generationBusy=true;renderStudio();window.promptTools?.render();
     generateBtn.disabled = true;
     document.getElementById('countRow').classList.add('locked');
     document.getElementById('genBtnText').textContent = s.generating;
@@ -3482,7 +3757,7 @@
       const res = await fetch(`${BACKEND}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({prompt,count:requestedCount,...(requestedStyle?{style:requestedStyle}:{}),...(requestedPreset?{preset:requestedPreset}:{}),initData:tg?.initData||''})
+        body: JSON.stringify({prompt,count:requestedCount,...window.creatorTools.background(),...(requestedStyle?{style:requestedStyle}:{}),...(requestedPreset?{preset:requestedPreset}:{}),initData:tg?.initData||''})
       });
 
       if (!res.ok) {
@@ -3578,6 +3853,11 @@
         const showError = () => {
           card.classList.remove('image-pending');
           card.classList.add('image-error');
+          card.classList.remove('selected');
+          if (card.isConnected && currentResults[i] === img) {
+            selectedIndices.delete(i);
+            updateFooter();
+          }
           image.remove();
         };
         image.addEventListener('load', () => card.classList.remove('image-pending'), { once: true });
@@ -3604,6 +3884,7 @@
       }
       grid.classList.remove('grid-fading');
       showGenHint();
+      window.promptTools?.resultSelection();
     }, 160);
   }
 
@@ -3636,6 +3917,7 @@
   });
 
   function toggleSelect(i, card) {
+    if(generationBusy||window.creatorTools?.busy()||card.classList.contains('image-error'))return;
     if (selectedIndices.has(i)) { selectedIndices.delete(i); card.classList.remove('selected'); }
     else { selectedIndices.add(i); card.classList.add('selected'); }
     document.getElementById('genHintBanner').style.display = 'none';
@@ -3643,6 +3925,7 @@
   }
 
   function updateFooter() {
+    window.promptTools?.resultSelection();
     const s = STR[lang];
     const n = selectedIndices.size;
     if (n > 0) {
@@ -3745,7 +4028,7 @@
         try {
           const detailResponse = await libraryRequest('/api/my-packs/stickers', { shortName: pack.short_name });
           return await detailResponse.json();
-        } catch (e) { return { pack: { shortName: pack.short_name, title: pack.title }, stickers: [], error: true }; }
+        } catch (e) { return { pack: { shortName: pack.short_name, title: pack.title, role:pack.role }, stickers: [], error: true }; }
       }));
       libraryLoaded = true;
       libraryLoading = false;
@@ -3822,7 +4105,7 @@
 
     const orderedPacks=[...visiblePacks];
     orderedPacks.forEach((item) => {
-      const pack = item.pack || {};
+      const pack = item.pack || {};const owner=pack.role!=='contributor';
       const stickers = Array.isArray(item.stickers) ? item.stickers : [];
       const card = document.createElement('article'); card.className = 'library-pack';
       const head = document.createElement('div'); head.className = 'library-pack-head';
@@ -3851,7 +4134,7 @@
             sticker.emoji = emoji.trim(); image.alt = sticker.emoji; showToast('✓');
           } catch (e) { showToast(libraryText().loadError); }
         });
-        tile.appendChild(edit);
+        if(owner)tile.appendChild(edit);
         const remove = document.createElement('button'); remove.className = 'library-sticker-remove'; remove.type = 'button';
         remove.textContent = '×'; remove.title = libraryText().remove; remove.setAttribute('aria-label', libraryText().remove);
         remove.addEventListener('click', async () => {
@@ -3863,7 +4146,7 @@
             renderLibrary();
           } catch (e) { remove.disabled = false; showToast(libraryText().loadError); }
         });
-        tile.appendChild(remove); gallery.appendChild(tile);
+        if(owner)tile.appendChild(remove); gallery.appendChild(tile);
         if (observer) observer.observe(image); else loadLibraryStickerImage(image, pack.shortName, sticker.fileId);
       });
       card.appendChild(gallery);
@@ -3903,7 +4186,7 @@
           renderLibrary();
         } catch (e) { deletePack.disabled = false; showToast(libraryText().loadError); }
       });
-      actions.append(open, rename, add, deletePack); card.appendChild(actions); list.appendChild(card);
+      if(owner)actions.append(open,rename,add,deletePack);else actions.append(open,add);window.creatorTools?.libraryActions(pack,actions); card.appendChild(actions); list.appendChild(card);
     });
   }
 
@@ -4111,42 +4394,20 @@
   document.getElementById('packModeExistingBtn').addEventListener('click', () => setPackMode('existing'));
   document.getElementById('packModeDownloadBtn').addEventListener('click', () => setPackMode('download'));
 
-  function downloadSelectedStickers() {
-    const s = STR[lang];
-    const chosen = [...selectedIndices].map(i => currentResults[i]);
-    if (chosen.length === 0) return;
-
-    chosen.forEach((sticker, i) => {
-      const downloadUrl = `${sticker.url}${sticker.url.includes('?') ? '&' : '?'}download=1`;
-      // Небольшая задержка между несколькими скачиваниями — иначе браузер может
-      // заблокировать сразу несколько одновременных переходов
-      setTimeout(() => {
-        if (tg?.openLink) {
-          // Внутри Telegram — открываем через системный браузер устройства,
-          // он и покажет обычный диалог/уведомление о сохранении файла
-          tg.openLink(downloadUrl);
-        } else {
-          // Обычный браузер (тестирование вне Telegram) — прямая ссылка на скачивание
-          const a = document.createElement('a');
-          a.href = downloadUrl;
-          a.download = `sticker_${sticker.id}.png`;
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-        }
-      }, i * 400);
-    });
-
-    showToast(s.downloadedAll);
+  let packSaveBusy=false,packSaveNonce=null,packSaveSignature='';
+  async function downloadSelectedStickers() {
+    const chosen=[...selectedIndices].map(i=>currentResults[i]).filter(Boolean);
+    for(const sticker of chosen){const raw=typeof sticker==='string'?sticker:sticker.url;const link=new URL(raw,BACKEND);if(link.origin!==new URL(BACKEND).origin)continue;link.searchParams.set('download','1');
+      if(tg?.openLink)tg.openLink(link.href);else{const a=document.createElement('a');a.href=link.href;a.download='sticker_'+(sticker.id||'image')+'.png';a.rel='noopener';document.body.append(a);a.click();a.remove();}
+      await new Promise(r=>setTimeout(r,400));
+    }
   }
 
   document.getElementById('addBtn').addEventListener('click', async () => {
+    if(packSaveBusy||generationBusy||window.creatorTools?.busy()||!selectedIndices.size)return;
     const s = STR[lang];
 
-    if (packMode === 'download') {
-      await downloadSelectedStickers();
-      return;
-    }
+    if (packMode === 'download') {packSaveBusy=true;document.getElementById('addBtn').disabled=true;try{await downloadSelectedStickers();}finally{packSaveBusy=false;document.getElementById('addBtn').disabled=false;}return;}
 
     const chosen = [...selectedIndices].map(i => currentResults[i]);
     const body = { stickers: chosen, initData: tg?.initData || '' };
@@ -4168,19 +4429,22 @@
       isNewPack = true;
     }
 
+    const signature=JSON.stringify({ids:chosen.map(s=>s.id),title:body.packName||'',target:body.targetPackShortName||null});
+    if(signature!==packSaveSignature){packSaveSignature=signature;packSaveNonce=crypto.randomUUID();}body.requestId=packSaveNonce;packSaveBusy=true;document.getElementById('addBtn').disabled=true;
     try {
-      const res = await fetch(`${BACKEND}/api/add-to-pack`, {
+      const res = await fetchWithTimeout(`${BACKEND}/api/add-to-pack`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
-      });
-      if (!res.ok) throw new Error();
+      },90000);
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error||s.packFail);
+      packSaveNonce=null;packSaveSignature='';
       myPacksLoaded = false; libraryLoaded = false; // список мог измениться — перечитаем его в библиотеке
       showSuccessModal(data.packLink, isNewPack);
     } catch (err) {
-      tg?.showAlert ? tg.showAlert(s.packFail) : alert(s.packFail);
-    }
+      tg?.showAlert ? tg.showAlert(err.message||s.packFail) : alert(err.message||s.packFail);
+    }finally{packSaveBusy=false;document.getElementById('addBtn').disabled=false;}
   });
 
   function showSuccessModal(packLink, isNewPack) {
@@ -4241,7 +4505,7 @@
       <strong style="color:var(--text)">Не хватает $?</strong><br>
       Сыграй в мини-игру «Найди пары» (нажми на баланс), купи $ за Telegram Stars, или спроси про промокод.<br><br>
       <strong style="color:var(--text)">Premium 👑</strong><br>
-      Standard, Luxury и Ultimate дают скидки на генерацию и увеличивают размер партии. Standard начисляет 3 монеты в день; Luxury и Ultimate открывают быстрые стили и особые темы. Ultimate также создаёт набор из шести эмоций за 12 монет.
+      Standard, Luxury и Ultimate дают скидки на генерацию и увеличивают размер партии. Ежедневных монетных подарков нет; Luxury и Ultimate открывают быстрые стили и особые темы. Ultimate создаёт шесть эмоций за 12 монет или автоматический набор из 24 за максимум 48 монет.
       Первый месяц: Standard 21 ⭐, Luxury 65 ⭐, Ultimate 287 ⭐; продление вручную — 32 ⭐, 99 ⭐ и 438 ⭐ соответственно. Кнопка 👑 в шапке.`,
     en: `<strong style="color:var(--text)">How to create stickers:</strong><br>
       1. Describe your idea (or tap "🎲 Random idea")<br>
@@ -4260,7 +4524,7 @@
       <strong style="color:var(--text)">Out of $?</strong><br>
       Play "Match the pairs" (tap the balance), buy $ with Telegram Stars, or ask about a promo code.<br><br>
       <strong style="color:var(--text)">Premium 👑</strong><br>
-      Choose Standard, Luxury, or Ultimate for generation discounts and larger batches. Standard includes 3 daily coins; Luxury and Ultimate unlock quick styles and exclusive themes. Ultimate can also create six expressions for 12 coins.
+      Choose Standard, Luxury, or Ultimate for generation discounts and larger batches. Subscriptions have no daily coin gifts; Luxury and Ultimate unlock quick styles and exclusive themes. Ultimate creates six expressions for 12 coins or an automatic 24-sticker pack for up to 48 coins.
       First month: Standard 21 ⭐, Luxury 65 ⭐, Ultimate 287 ⭐; manual renewals are 32 ⭐, 99 ⭐, and 438 ⭐. Tap the 👑 button in the header.`
   };
 
@@ -4420,7 +4684,7 @@
   }
   let ultimateBackendReady = false;
   let subPerksByTier = {
-    standard: { maxImages: 6, costPerImage: 4, dailyBonus: 3 },
+    standard: { maxImages: 6, costPerImage: 4, dailyBonus: 0 },
     luxury: { maxImages: 10, costPerImage: 3, dailyBonus: 0 },
     ultimate: { maxImages: 12, costPerImage: 2, dailyBonus: 0 },
   };
@@ -4462,15 +4726,15 @@
         { ico: '🖼️', text: s.perkMaxImages(p.maxImages), luxe: true },
         { ico: '✨', text: s.perkUltimateStyle, luxe: true },
         { ico: '👑', text: s.perkUltimateBadge, luxe: true },
-        { ico: '🎨', text: 'Gold Atelier + Aurora Studio', luxe: true },
+        { ico: '🎨', text: 'Obsidian Observatory + Origami Atelier', luxe: true },
         { ico: '✦', text: studio[10], luxe: true },
         { ico: '☺', text: studio[11]+' · '+studio[9], luxe: true },
+        { ico: '✦', text: window.creatorTools?.label(11)+' · 48', luxe: true },
       ];
     }
     return [
       { ico: '💵', text: s.perkCostPerImage(p.costPerImage) },
       { ico: '🖼️', text: s.perkMaxImages(p.maxImages) },
-      { ico: '🎁', text: s.perkDailyBonus(p.dailyBonus) },
       { ico: '🎨', text: s.perkStandardStyle },
     ];
   }
@@ -5048,6 +5312,92 @@
       setTimeout(() => ripple.remove(), 600);
     });
   });
+
+  /* COLLABORATIVE_CREATOR */
+// Embedded in index.html after all existing controllers have been initialized.
+(() => {
+  const copy = {
+    en:'Creation settings|Text tools|Background|White|Black|Custom colour|Transparent|Upload image|Individual stickers|24 emotions · Ultimate|Pack title|Create 24-sticker pack|Maximum 48 coins. Uncreated stickers are refunded.|Invite contributors|Copy invitation|Join pack|Joined pack|Participants|Leave pack|Remove|Revoke invitation|Shared pack|Owner|Save|Try again|Action could not be confirmed|Transparent results depend on background separation. Preview before saving.|PNG, JPEG or WebP · up to 4 MB|Mode|Working|Complete|Interrupted',
+    ru:'Настройки создания|Инструменты текста|Фон|Белый|Чёрный|Свой цвет|Прозрачный|Загрузить картинку|Отдельные стикеры|24 эмоции · Ultimate|Название набора|Создать набор из 24 стикеров|Максимум 48 монет. За несозданные стикеры — возврат.|Пригласить участников|Скопировать приглашение|Вступить в набор|Вы вступили в набор|Участники|Выйти из набора|Удалить|Отозвать приглашение|Общий набор|Владелец|Сохранить|Повторить|Не удалось подтвердить действие|Прозрачность зависит от отделения фона. Проверьте результат перед сохранением.|PNG, JPEG или WebP · до 4 МБ|Режим|Создаётся|Готово|Прервано',
+    es:'Opciones de creación|Herramientas de texto|Fondo|Blanco|Negro|Color personalizado|Transparente|Subir imagen|Stickers individuales|24 emociones · Ultimate|Nombre del paquete|Crear paquete de 24 stickers|Máximo 48 monedas. Se reembolsan los stickers no creados.|Invitar colaboradores|Copiar invitación|Unirse al paquete|Te uniste al paquete|Participantes|Salir del paquete|Eliminar|Revocar invitación|Paquete compartido|Propietario|Guardar|Reintentar|No se pudo confirmar la acción|La transparencia depende de separar el fondo. Revisa antes de guardar.|PNG, JPEG o WebP · hasta 4 MB|Modo|Creando|Completado|Interrumpido',
+    zh:'创建设置|文本工具|背景|白色|黑色|自定义颜色|透明|上传图片|单张贴纸|24种表情 · Ultimate|贴纸包名称|创建24张贴纸包|最多48金币。未生成贴纸将退款。|邀请协作者|复制邀请|加入贴纸包|已加入贴纸包|成员|退出贴纸包|移除|撤销邀请|共享贴纸包|所有者|保存|重试|无法确认操作|透明效果取决于背景分离。保存前请预览。|PNG、JPEG或WebP · 最大4 MB|模式|生成中|完成|已中断',
+    hi:'निर्माण सेटिंग|टेक्स्ट उपकरण|पृष्ठभूमि|सफ़ेद|काली|अपना रंग|पारदर्शी|चित्र अपलोड करें|अलग स्टिकर|24 भाव · Ultimate|पैक का नाम|24 स्टिकर पैक बनाएँ|अधिकतम 48 सिक्के। न बने स्टिकर का रिफंड मिलेगा।|योगदानकर्ता बुलाएँ|निमंत्रण कॉपी करें|पैक में शामिल हों|पैक में शामिल हुए|सदस्य|पैक छोड़ें|हटाएँ|निमंत्रण रद्द करें|साझा पैक|मालिक|सहेजें|फिर कोशिश करें|कार्रवाई की पुष्टि नहीं हुई|पारदर्शिता पृष्ठभूमि अलग करने पर निर्भर है। सहेजने से पहले देखें।|PNG, JPEG या WebP · 4 MB तक|मोड|बन रहा है|पूरा|रुका',
+    ar:'إعدادات الإنشاء|أدوات النص|الخلفية|أبيض|أسود|لون مخصص|شفاف|تحميل صورة|ملصقات منفردة|24 تعبيراً · Ultimate|اسم الحزمة|إنشاء حزمة من 24 ملصقاً|48 عملة كحد أقصى. تُرد تكلفة الملصقات غير المنشأة.|دعوة مساهمين|نسخ الدعوة|الانضمام للحزمة|تم الانضمام|المشاركون|مغادرة الحزمة|إزالة|إلغاء الدعوة|حزمة مشتركة|المالك|حفظ|إعادة المحاولة|تعذر تأكيد الإجراء|تعتمد الشفافية على فصل الخلفية. عاين قبل الحفظ.|PNG أو JPEG أو WebP · حتى 4 MB|الوضع|جارٍ الإنشاء|مكتمل|متوقف',
+    pt:'Configurações de criação|Ferramentas de texto|Fundo|Branco|Preto|Cor personalizada|Transparente|Enviar imagem|Stickers individuais|24 emoções · Ultimate|Nome do pacote|Criar pacote de 24 stickers|Máximo de 48 moedas. Stickers não criados são reembolsados.|Convidar colaboradores|Copiar convite|Entrar no pacote|Você entrou no pacote|Participantes|Sair do pacote|Remover|Revogar convite|Pacote compartilhado|Proprietário|Salvar|Tentar novamente|Não foi possível confirmar a ação|A transparência depende da separação do fundo. Veja antes de salvar.|PNG, JPEG ou WebP · até 4 MB|Modo|Criando|Concluído|Interrompido',
+    fr:'Options de création|Outils de texte|Fond|Blanc|Noir|Couleur personnalisée|Transparent|Importer une image|Stickers individuels|24 émotions · Ultimate|Nom du pack|Créer un pack de 24 stickers|48 pièces maximum. Les stickers non créés sont remboursés.|Inviter des contributeurs|Copier invitation|Rejoindre le pack|Pack rejoint|Participants|Quitter le pack|Retirer|Révoquer invitation|Pack partagé|Propriétaire|Enregistrer|Réessayer|Action non confirmée|La transparence dépend du détourage. Vérifiez avant de sauvegarder.|PNG, JPEG ou WebP · jusqu’à 4 Mo|Mode|Création|Terminé|Interrompu',
+    ja:'作成設定|テキストツール|背景|白|黒|カスタム色|透明|画像をアップロード|個別ステッカー|24の表情 · Ultimate|パック名|24枚のパックを作成|最大48コイン。未生成分は返金されます。|共同制作者を招待|招待をコピー|パックに参加|参加しました|参加者|パックを退出|削除|招待を取り消す|共有パック|所有者|保存|再試行|操作を確認できませんでした|透明化は背景分離によります。保存前に確認してください。|PNG、JPEG、WebP · 最大4 MB|モード|作成中|完了|中断',
+    de:'Erstellungseinstellungen|Textwerkzeuge|Hintergrund|Weiß|Schwarz|Eigene Farbe|Transparent|Bild hochladen|Einzelne Sticker|24 Emotionen · Ultimate|Paketname|24-Sticker-Paket erstellen|Höchstens 48 Münzen. Nicht erstellte Sticker werden erstattet.|Mitwirkende einladen|Einladung kopieren|Paket beitreten|Paket beigetreten|Teilnehmer|Paket verlassen|Entfernen|Einladung widerrufen|Gemeinsames Paket|Besitzer|Speichern|Erneut versuchen|Aktion nicht bestätigt|Transparenz hängt von der Hintergrundtrennung ab. Vor dem Speichern prüfen.|PNG, JPEG oder WebP · bis 4 MB|Modus|Wird erstellt|Fertig|Unterbrochen',
+    id:'Pengaturan kreasi|Alat teks|Latar|Putih|Hitam|Warna sendiri|Transparan|Unggah gambar|Stiker satuan|24 emosi · Ultimate|Nama paket|Buat paket 24 stiker|Maksimum 48 koin. Stiker yang gagal dibuat dikembalikan.|Undang kontributor|Salin undangan|Gabung paket|Bergabung dengan paket|Peserta|Keluar dari paket|Hapus|Cabut undangan|Paket bersama|Pemilik|Simpan|Coba lagi|Tindakan belum dikonfirmasi|Transparansi bergantung pada pemisahan latar. Pratinjau sebelum simpan.|PNG, JPEG atau WebP · hingga 4 MB|Mode|Membuat|Selesai|Terhenti',
+    tr:'Oluşturma ayarları|Metin araçları|Arka plan|Beyaz|Siyah|Özel renk|Şeffaf|Görsel yükle|Tekli çıkartmalar|24 duygu · Ultimate|Paket adı|24 çıkartmalık paket oluştur|En çok 48 jeton. Oluşturulmayan çıkartmalar iade edilir.|Katılımcı davet et|Daveti kopyala|Pakete katıl|Pakete katıldınız|Katılımcılar|Paketten ayrıl|Kaldır|Daveti iptal et|Ortak paket|Sahip|Kaydet|Tekrar dene|İşlem doğrulanamadı|Şeffaflık arka plan ayırmaya bağlıdır. Kaydetmeden önce inceleyin.|PNG, JPEG veya WebP · en çok 4 MB|Mod|Oluşturuluyor|Tamamlandı|Kesildi'
+  };
+  const t=(i)=>(copy[lang]||copy.en).split('|')[i];
+  let jobBusy=false,jobId=null,jobTimer,jobNonce=null,jobPayload=null,uploadBusy=false,joining=false,pollInFlight=false;
+  const el=id=>document.getElementById(id);
+  async function request(path,body={}){if(!tg?.initData)throw new Error(libraryText().telegramRequired);const response=await fetchWithTimeout(BACKEND+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,initData:tg.initData})},25000);const result=await response.json();if(!response.ok)throw new Error(result.error||t(25));return result;}
+  function render(){
+    el('creatorSettingsLabel').textContent=t(0);el('creatorToolsLabel').textContent=t(1);el('creatorBackgroundLabel').textContent=t(2);
+    [...el('creatorBackground').options].forEach((o,i)=>o.textContent=t(3+i));
+    el('creatorUploadLabel').textContent=t(7);el('creatorUploadHint').textContent=t(27);el('creatorModeLabel').textContent=t(28);
+    [...el('creatorMode').options].forEach((o,i)=>o.textContent=t(8+i));
+    const ultimate=premiumStudioAccess(true);el('creatorModeRow').hidden=!ultimate;if(!ultimate)el('creatorMode').value='single';
+    el('creatorPackName').placeholder=t(10);el('creatorPackName').setAttribute('aria-label',t(10));el('creatorPackHint').textContent=t(12);el('creatorPackFields').hidden=el('creatorMode').value!=='pack24';
+    el('countRow').hidden=el('creatorMode').value==='pack24';el('premiumEmotionControl').hidden=!ultimate||el('creatorMode').value==='pack24';
+    el('premiumStyle').disabled=generationBusy||jobBusy;el('premiumEmotionSet').disabled=generationBusy||jobBusy;el('countRow').classList.toggle('locked',generationBusy||jobBusy);
+    el('creatorBackgroundColor').disabled=generationBusy||jobBusy;el('creatorPackName').disabled=jobBusy;
+    el('creatorBackgroundColor').hidden=el('creatorBackground').value!=='color';el('creatorTransparentHint').textContent=t(26);el('creatorTransparentHint').hidden=el('creatorBackground').value!=='transparent';
+    el('creatorBackground').disabled=generationBusy||jobBusy;el('creatorMode').disabled=generationBusy||jobBusy;
+    el('creatorUpload').disabled=generationBusy||jobBusy||uploadBusy;
+    if(!generationBusy&&!accountBanned){if(el('creatorMode').value==='pack24'){el('genBtnText').textContent=t(11);generateBtn.disabled=jobBusy||uploadBusy;el('costText').textContent=t(12);}else if(jobBusy||uploadBusy)generateBtn.disabled=true;}
+    el('creatorJoinButton').textContent=t(15);
+  }
+  function background(){return {background:el('creatorBackground').value,color:el('creatorBackgroundColor').value};}
+  el('creatorBackground').addEventListener('change',render);
+  el('creatorMode').addEventListener('change',()=>{generationPreset='';el('premiumEmotionSet').checked=false;renderCountRow();renderBalance();render();});
+  async function upload(file){
+    if(!file||uploadBusy||generationBusy||jobBusy)return;
+    if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>4*1024*1024){showToast(t(27));return;}
+    uploadBusy=true;render();try{const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=reject;reader.readAsDataURL(file);});const sticker=await request('/api/stickers/upload',{data});renderResults([...(Array.isArray(currentResults)?currentResults:[]),sticker].slice(-24));emptyState.style.display='none';resultsTitle.style.display='flex';selectedIndices.clear();showToast('✓');}catch(error){showToast(error.message||t(25));}finally{uploadBusy=false;el('creatorUpload').value='';renderBalance();render();}}
+  el('creatorUpload').addEventListener('change',event=>upload(event.target.files[0]));
+  async function poll(){
+    if(!jobId||pollInFlight)return;clearTimeout(jobTimer);pollInFlight=true;const requestedJob=jobId;
+    try{const data=await request('/api/packs/jobs/status',{id:requestedJob});if(jobId!==requestedJob)return;setBalance(data.balance);const job=data.job;if(!job){jobBusy=false;jobId=null;safeSetItem('stickerCreatorJob','');return;}
+      el('creatorProgress').hidden=false;el('creatorProgressBar').value=job.attempted;el('creatorProgressText').textContent=(job.state==='completed'?t(30):['interrupted','cancelled'].includes(job.state)?t(31):t(29))+' · '+job.attempted+' / 24';
+      if(!['queued','running'].includes(job.state)){jobBusy=false;jobNonce=null;jobPayload=null;safeSetItem('stickerCreatorJob','');currentResults=[];selectedIndices.clear();renderResults(job.images);emptyState.style.display=job.images.length?'none':'';resultsTitle.style.display=job.images.length?'flex':'none';if(job.packLink){myPacksLoaded=false;libraryLoaded=false;showSuccessModal(job.packLink,true);}else if(job.packError)showToast(job.packError);jobId=null;}
+    }catch{el('creatorProgressText').textContent=t(24)+' · '+t(25);}
+    finally{pollInFlight=false;renderBalance();render();if(jobId)jobTimer=setTimeout(poll,4000);}
+  }
+  async function startPack(){
+    if(jobBusy||generationBusy||uploadBusy||!premiumStudioAccess(true))return;
+    if(window.promptTools&&!window.promptTools.beforeGeneration())return;
+    const prompt=el('promptInput').value.trim();if(!prompt){el('promptInput').focus();return;}
+    const title=el('creatorPackName').value.trim();if(!title){el('creatorPackFields').hidden=false;el('creatorSettings').open=true;el('creatorPackName').focus();return;}
+    if(getBalance()<48){openGame();return;}
+    if(!confirm(t(11)+'\n'+t(12)))return;
+    const payload={prompt,title,style:quickStyle||'vector',...background(),expectedCost:48};
+    const signature=JSON.stringify(payload);if(jobPayload!==signature){jobPayload=signature;jobNonce=crypto.randomUUID();}
+    jobBusy=true;render();try{const data=await request('/api/packs/jobs/start',{...payload,requestId:jobNonce});jobId=data.id;safeSetItem('stickerCreatorJob',jobId);setBalance(data.balance);await poll();}catch(error){jobBusy=false;showToast(error.message||t(25));renderBalance();render();}
+  }
+  function beforeGenerate(){if(jobBusy||uploadBusy)return true;if(el('creatorMode').value==='pack24'){startPack();return true;}return false;}
+  async function invite(pack){try{const data=await request('/api/packs/invite',{shortName:pack.shortName});showInvite(data.link);}catch(e){showToast(e.message);}}
+  function showInvite(link){el('creatorInviteLink').value=link;el('creatorInviteCopy').textContent=t(14);openModal(el('creatorInviteModal'));}
+  el('creatorInviteCopy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(el('creatorInviteLink').value);showToast('✓');}catch{el('creatorInviteLink').focus();el('creatorInviteLink').select();}});
+  el('creatorInviteClose').addEventListener('click',()=>closeModal(el('creatorInviteModal')));
+  async function members(pack){try{const data=await request('/api/packs/members',{shortName:pack.shortName});const list=el('creatorMembersList');list.replaceChildren();el('creatorMembersTitle').textContent=t(17);for(const member of data.members){const row=document.createElement('div');row.className='creator-member';const label=document.createElement('span');label.textContent=String(member.user_id);const remove=document.createElement('button');remove.className='library-action';remove.textContent=t(19);remove.addEventListener('click',async()=>{if(!confirm(t(19)+'?'))return;remove.disabled=true;try{await request('/api/packs/remove-member',{shortName:pack.shortName,memberId:member.user_id});row.remove();}catch(e){remove.disabled=false;showToast(e.message);}});row.append(label,remove);list.append(row);}openModal(el('creatorMembersModal'));}catch(e){showToast(e.message);}}
+  el('creatorMembersClose').addEventListener('click',()=>closeModal(el('creatorMembersModal')));
+  function libraryActions(pack,actions){const owner=pack.role!=='contributor';const menu=document.createElement('details');menu.className='creator-pack-menu';const summary=document.createElement('summary');summary.textContent=owner?t(13):t(21);menu.append(summary);
+    const button=(label,handler)=>{const b=document.createElement('button');b.type='button';b.className='library-action';b.textContent=label;b.addEventListener('click',handler);menu.append(b);};
+    if(owner){button(t(13),()=>invite(pack));button(t(17),()=>members(pack));button(t(20),async()=>{if(!confirm(t(20)+'?'))return;try{await request('/api/packs/revoke-invite',{shortName:pack.shortName});showToast('✓');}catch(e){showToast(e.message);}});}else button(t(18),async()=>{if(!confirm(t(18)+'?'))return;try{await request('/api/packs/remove-member',{shortName:pack.shortName,memberId:tg.initDataUnsafe.user.id});libraryLoaded=false;myPacksLoaded=false;await loadLibrary(true);}catch(e){showToast(e.message);}});
+    actions.append(menu);
+  }
+  let inviteToken='';const query=new URLSearchParams(location.search);const startParam=tg?.initDataUnsafe?.start_param||query.get('tgWebAppStartParam')||(query.get('invite')?'pack_'+query.get('invite'):'');
+  if(/^pack_[A-Za-z0-9_-]{43}$/.test(startParam)){inviteToken=startParam.slice(5);el('creatorJoin').hidden=false;}
+  el('creatorJoinButton').addEventListener('click',async()=>{if(joining)return;joining=true;el('creatorJoinButton').disabled=true;try{await request('/api/packs/join',{token:inviteToken});el('creatorJoin').hidden=true;showToast(t(16));myPacksLoaded=false;libraryLoaded=false;switchMainView('library');}catch(e){showToast(e.message);}finally{joining=false;el('creatorJoinButton').disabled=false;}});
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&jobId)poll();});
+  window.creatorTools={render,background,beforeGenerate,libraryActions,busy:()=>jobBusy||uploadBusy,label:t};
+  render();
+  const savedJob=safeGetItem('stickerCreatorJob');if(/^[a-f0-9-]{36}$/i.test(savedJob)&&tg?.initData){jobId=savedJob;jobBusy=true;poll();}
+  else if(tg?.initData){request('/api/packs/jobs/status').then(data=>{if(data.job&&!jobBusy&&!generationBusy){jobId=data.job.id;jobBusy=true;safeSetItem('stickerCreatorJob',jobId);poll();}}).catch(()=>{});}
+})();
 
   applyLang();
   syncBalanceFromServer();
