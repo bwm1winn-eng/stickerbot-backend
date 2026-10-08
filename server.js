@@ -1,4 +1,5 @@
 import { createCreatorFeatures } from "./creator-features.js";
+import { EMOTION_VARIANTS } from "./emotion-catalog.js";
 import { stickerBackground, backgroundPrompt, normalizeSticker } from "./sticker-background.js";
 import express from "express";
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -18,7 +19,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 const GEN_COST_PER_IMAGE = 5;
 const DEFAULT_BALANCE = 15;
-const FREE_DAILY_IMAGE_LIMIT = 4;
+const FREE_DAILY_IMAGE_LIMIT = 8;
 const CHANNEL_TASK_CHAT = process.env.CHANNEL_TASK_CHAT || "@Lordeuso";
 const CHANNEL_TASK_REWARD = 10;
 const CHANNEL_TASK_CLAIM_CODE = "__task_channel_lordeuso";
@@ -143,17 +144,36 @@ async function getFreeDailyImageUsage(userId, day = utcDateKey()) {
   return { limit: FREE_DAILY_IMAGE_LIMIT, used: rows?.length || 0 };
 }
 
+async function getFreeEmotionUsage(userId, day = utcDateKey()) {
+  const rows = await supabaseRequest(
+    `promo_redemptions?user_id=eq.${userId}&code=eq.${encodeURIComponent(`__free_emotions_${day}`)}&select=code&limit=1`
+  );
+  const used = rows?.length ? 1 : 0;
+  const resetAt = new Date(`${day}T00:00:00.000Z`);
+  resetAt.setUTCDate(resetAt.getUTCDate() + 1);
+  return { limit: 1, used, remaining: 1 - used, available: used === 0, resetAt: resetAt.toISOString() };
+}
+
 // Claims use the unique (user_id, code) key to serialize simultaneous requests.
 async function reserveFreeDailyImageSlots(userId, count, day = utcDateKey()) {
   const reserved = [];
-  for (let slot = 1; slot <= FREE_DAILY_IMAGE_LIMIT && reserved.length < count; slot++) {
-    const code = freeImageClaimCode(day, slot);
-    const rows = await supabaseRequest("promo_redemptions?on_conflict=user_id,code", {
-      method: "POST",
-      headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
-      body: JSON.stringify({ user_id: userId, code }),
-    });
-    if (rows?.length) reserved.push(code);
+  try {
+    for (let slot = 1; slot <= FREE_DAILY_IMAGE_LIMIT && reserved.length < count; slot++) {
+      const code = freeImageClaimCode(day, slot);
+      const rows = await supabaseRequest("promo_redemptions?on_conflict=user_id,code", {
+        method: "POST",
+        headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
+        body: JSON.stringify({ user_id: userId, code }),
+      });
+      if (rows?.length) reserved.push(code);
+    }
+  } catch (error) {
+    // Release only inserts confirmed as ours. An ambiguous failing insert may
+    // already have committed, so its slot cannot be safely attributed here.
+    try { await releaseFreeDailyImageSlots(userId, reserved); } catch {
+      console.error("Free image reservation cleanup failed");
+    }
+    throw error;
   }
   return reserved;
 }
@@ -176,9 +196,9 @@ app.post("/api/balance", async (req, res) => {
     const sub = await getOrCreateSubscription(userId);
     await maybeApplyDailyBonus(userId, sub);
     const balance = await getOrCreateBalance(userId);
-    const freeDaily = !tierConfig(sub) && !isOwner
-      ? await getFreeDailyImageUsage(userId)
-      : null;
+    const [freeDaily, freeEmotion] = !tierConfig(sub) && !isOwner
+      ? await Promise.all([getFreeDailyImageUsage(userId), getFreeEmotionUsage(userId)])
+      : [null, null];
 
     res.json({
       balance,
@@ -189,6 +209,7 @@ app.post("/api/balance", async (req, res) => {
         expiresAt: sub.expires_at,
       },
       ...(freeDaily ? { freeDaily: { ...freeDaily, remaining: Math.max(0, freeDaily.limit - freeDaily.used) } } : {}),
+      freeEmotion,
     });
   } catch (err) {
     console.error("Balance fetch error:", err.message);
@@ -221,20 +242,24 @@ let channelTaskAdminVerifiedUntil = 0;
 let channelTaskAdminCheck = null;
 const channelTaskMembershipChecks = new Map();
 
-function channelTaskError(code, reason, retryAfter = 3) {
+function channelTaskError(code, reason, retryAfter = 3, diagnostic = {}) {
   const error = new Error(reason);
   error.code = code;
   error.retryAfter = Math.min(60, Math.max(1, Number(retryAfter) || 3));
+  error.method = diagnostic.method || "configuration";
+  error.reason = diagnostic.reason || "configuration_unavailable";
+  if (Number.isInteger(diagnostic.status)) error.status = diagnostic.status;
   return error;
 }
 
 // Error messages remain fixed, so fetch failures can never log a bot-token URL.
 async function channelTaskTelegramRequest(method, params, deadline) {
-  if (!BOT_TOKEN) throw channelTaskError("CHANNEL_TASK_CONFIGURATION", "Telegram bot is not configured");
+  const failure = (code, message, reason, retryAfter = 3, status) => channelTaskError(code, message, retryAfter, { method, reason, status });
+  if (!BOT_TOKEN) throw failure("CHANNEL_TASK_CONFIGURATION", "Telegram bot is not configured", "bot_not_configured");
   const query = new URLSearchParams(params);
   for (let attempt = 0; attempt < 2; attempt++) {
     const remaining = deadline - Date.now();
-    if (remaining <= 0) throw channelTaskError("CHANNEL_CHECK_UNAVAILABLE", "Telegram membership check timed out");
+    if (remaining <= 0) throw failure("CHANNEL_CHECK_UNAVAILABLE", "Telegram membership check timed out", "deadline_exceeded");
     let response;
     let payload;
     try {
@@ -242,19 +267,24 @@ async function channelTaskTelegramRequest(method, params, deadline) {
         signal: AbortSignal.timeout(Math.min(4000, remaining)),
       });
       payload = await response.json();
-    } catch {
+    } catch (error) {
       if (attempt === 0 && deadline - Date.now() > 500) {
         await new Promise((resolve) => setTimeout(resolve, 300));
         continue;
       }
-      throw channelTaskError("CHANNEL_CHECK_UNAVAILABLE", "Telegram membership network request failed");
+      const reason = ["AbortError", "TimeoutError"].includes(error?.name) ? "telegram_timeout" : "telegram_network_failure";
+      throw failure("CHANNEL_CHECK_UNAVAILABLE", "Telegram membership network request failed", reason);
     }
     if (response.ok && payload?.ok && payload.result) return payload.result;
     const status = Number(payload?.error_code) || response.status;
     const description = typeof payload?.description === "string" ? payload.description.toLowerCase() : "";
-    if (status === 401 || status === 403 ||
+    if (status === 401) {
+      throw failure("CHANNEL_TASK_CONFIGURATION", "Telegram bot authentication failed", "bot_authentication_failed", 3, status);
+    }
+    if (status === 403 ||
       (status === 400 && /chat not found|member list is inaccessible|chat_admin_required|not enough rights|bot.*not.*member/.test(description))) {
-      throw channelTaskError("CHANNEL_TASK_CONFIGURATION", "Channel task requires a valid channel and bot administrator access");
+      const reason = /chat not found/.test(description) ? "channel_unavailable" : "bot_admin_required";
+      throw failure("CHANNEL_TASK_CONFIGURATION", "Channel task requires a valid channel and bot administrator access", reason, 3, status);
     }
     const retryAfter = Math.min(60, Math.max(1, Number(payload?.parameters?.retry_after) || 3));
     const wait = status === 429 ? retryAfter * 1000 : 300;
@@ -262,25 +292,26 @@ async function channelTaskTelegramRequest(method, params, deadline) {
       await new Promise((resolve) => setTimeout(resolve, wait));
       continue;
     }
-    throw channelTaskError("CHANNEL_CHECK_UNAVAILABLE", status === 429 ? "Telegram membership check rate limited" : "Telegram membership check unavailable", retryAfter);
+    const reason = status === 429 ? "telegram_rate_limited" : status >= 500 ? "telegram_server_failure" : "telegram_response_invalid";
+    throw failure("CHANNEL_CHECK_UNAVAILABLE", status === 429 ? "Telegram membership check rate limited" : "Telegram membership check unavailable", reason, retryAfter, status);
   }
-  throw channelTaskError("CHANNEL_CHECK_UNAVAILABLE", "Telegram membership check unavailable");
+  throw failure("CHANNEL_CHECK_UNAVAILABLE", "Telegram membership check unavailable", "telegram_response_invalid");
 }
 
 async function ensureChannelTaskAdmin(deadline) {
   if (CHANNEL_TASK_CHAT.toLowerCase() !== "@lordeuso") {
-    throw channelTaskError("CHANNEL_TASK_CONFIGURATION", "Channel task reward is configured for a different channel");
+    throw channelTaskError("CHANNEL_TASK_CONFIGURATION", "Channel task reward is configured for a different channel", 3, { reason: "channel_mismatch" });
   }
   if (channelTaskAdminVerifiedUntil > Date.now()) return;
   if (!channelTaskAdminCheck) {
     channelTaskAdminCheck = (async () => {
       const bot = await channelTaskTelegramRequest("getMe", {}, deadline);
       if (!bot.is_bot || !Number.isSafeInteger(bot.id)) {
-        throw channelTaskError("CHANNEL_TASK_CONFIGURATION", "Telegram bot identity is invalid");
+        throw channelTaskError("CHANNEL_TASK_CONFIGURATION", "Telegram bot identity is invalid", 3, { method: "getMe", reason: "bot_identity_invalid" });
       }
       const membership = await channelTaskTelegramRequest("getChatMember", { chat_id: CHANNEL_TASK_CHAT, user_id: String(bot.id) }, deadline);
       if (membership?.user?.id !== bot.id || !["creator", "administrator"].includes(membership.status)) {
-        throw channelTaskError("CHANNEL_TASK_CONFIGURATION", "Bot administrator access is required for channel tasks");
+        throw channelTaskError("CHANNEL_TASK_CONFIGURATION", "Bot administrator access is required for channel tasks", 3, { method: "getChatMember", reason: "bot_admin_required" });
       }
       channelTaskAdminVerifiedUntil = Date.now() + 60_000;
     })();
@@ -300,13 +331,13 @@ async function verifyChannelTaskMembership(userId, { retryNotJoined = false } = 
     for (let attempt = 0; attempt < (retryNotJoined ? 2 : 1); attempt++) {
       const member = await channelTaskTelegramRequest("getChatMember", { chat_id: CHANNEL_TASK_CHAT, user_id: String(userId) }, deadline);
       if (!member?.user || member.user.id !== Number(userId)) {
-        throw channelTaskError("CHANNEL_CHECK_UNAVAILABLE", "Telegram membership response identity mismatch");
+        throw channelTaskError("CHANNEL_CHECK_UNAVAILABLE", "Telegram membership response identity mismatch", 3, { method: "getChatMember", reason: "member_identity_mismatch" });
       }
       if (["creator", "administrator", "member"].includes(member.status) ||
         (member.status === "restricted" && member.is_member === true)) return true;
       if (!["left", "kicked", "restricted"].includes(member.status) ||
         (member.status === "restricted" && typeof member.is_member !== "boolean")) {
-        throw channelTaskError("CHANNEL_CHECK_UNAVAILABLE", "Telegram membership response status is unknown");
+        throw channelTaskError("CHANNEL_CHECK_UNAVAILABLE", "Telegram membership response status is unknown", 3, { method: "getChatMember", reason: "member_status_unknown" });
       }
       if (!retryNotJoined || attempt > 0) return false;
       // A just-completed channel join can take a moment to become visible.
@@ -320,8 +351,9 @@ async function verifyChannelTaskMembership(userId, { retryNotJoined = false } = 
 
 function sendChannelTaskCheckError(res, error) {
   const code = error.code === "CHANNEL_TASK_CONFIGURATION" ? "CHANNEL_TASK_CONFIGURATION" : "CHANNEL_CHECK_UNAVAILABLE";
-  console.error("Channel task verification failed:", code, error.message);
-  return res.status(503).json({ error: "membership verification unavailable", code, retryAfter: error.retryAfter || 3 });
+  // Only fixed classifications are logged; raw Telegram payloads and URLs may contain private data.
+  console.error("Channel task verification failed:", { code, method: error.method, reason: error.reason, status: error.status });
+  return res.status(503).json({ error: "membership verification unavailable", code, reason: error.reason, retryAfter: error.retryAfter || 3 });
 }
 
 app.post("/api/tasks/channel/status", async (req, res) => {
@@ -333,11 +365,17 @@ app.post("/api/tasks/channel/status", async (req, res) => {
     const joined = await verifyChannelTaskMembership(userId);
     res.json({ claimed: false, joined, reward: CHANNEL_TASK_REWARD });
   } catch (err) {
-    sendChannelTaskCheckError(res, err);
+    if (["CHANNEL_CHECK_UNAVAILABLE", "CHANNEL_TASK_CONFIGURATION"].includes(err.code)) {
+      return sendChannelTaskCheckError(res, err);
+    }
+    console.error("Channel task status failed:", { code: "CHANNEL_TASK_STATUS_UNAVAILABLE", method: "hasChannelTaskClaim", reason: "database_request_failed" });
+    return res.status(503).json({ error: "channel task status unavailable", code: "CHANNEL_TASK_STATUS_UNAVAILABLE", retryAfter: 3 });
   }
 });
 
 app.post("/api/tasks/channel/claim", async (req, res) => {
+  let databaseMethod = "hasChannelTaskClaim";
+  let databaseReason = "database_request_failed";
   try {
     const userId = extractUserId(req.body.initData);
     if (!userId) return res.status(400).json({ error: "invalid Telegram Web App data" });
@@ -350,6 +388,7 @@ app.post("/api/tasks/channel/claim", async (req, res) => {
 
     // Claim, credit, and ledger entry commit together. Never DELETE a claim after
     // an ambiguous network failure: the database may already have credited it.
+    databaseMethod = "account_claim_channel_task";
     const result = await supabaseRequest("rpc/account_claim_channel_task", {
       method: "POST",
       body: JSON.stringify({ p_user_id: userId }),
@@ -358,11 +397,12 @@ app.post("/api/tasks/channel/claim", async (req, res) => {
       return res.status(409).json({ error: "channel task reward is no longer available", code: "TASK_REWARD_EXHAUSTED" });
     }
     if (result?.code === "TASK_REWARD_UNAVAILABLE") {
-      throw channelTaskError("CHANNEL_TASK_CONFIGURATION", "Channel task reward configuration is unavailable");
+      throw channelTaskError("CHANNEL_TASK_CONFIGURATION", "Channel task reward configuration is unavailable", 3, { method: "account_claim_channel_task", reason: "reward_configuration_unavailable" });
     }
     if (!result || typeof result.applied !== "boolean" || typeof result.alreadyClaimed !== "boolean" ||
       !result.claimed || !Number.isInteger(result.balance) || result.reward !== CHANNEL_TASK_REWARD ||
       (!result.applied && !result.alreadyClaimed)) {
+      databaseReason = "database_response_invalid";
       throw new Error("invalid channel task reward response");
     }
     return res.json({ ok: true, balance: result.balance, reward: result.reward, alreadyClaimed: result.alreadyClaimed });
@@ -370,8 +410,8 @@ app.post("/api/tasks/channel/claim", async (req, res) => {
     if (["CHANNEL_CHECK_UNAVAILABLE", "CHANNEL_TASK_CONFIGURATION"].includes(err.code)) {
       return sendChannelTaskCheckError(res, err);
     }
-    console.error("Channel task claim failed:", err.message);
-    return res.status(500).json({ error: "could not grant task reward" });
+    console.error("Channel task claim failed:", { code: "CHANNEL_TASK_CLAIM_FAILED", method: databaseMethod, reason: databaseReason });
+    return res.status(500).json({ error: "could not grant task reward", code: "CHANNEL_TASK_CLAIM_FAILED" });
   }
 });
 
@@ -594,22 +634,19 @@ const STICKER_ART_STYLES = {
   paper: "layered paper-cut illustration, textured cut-paper shapes, subtle layered shadows",
   anime: "anime illustration, expressive character design, clean cel shading, crisp linework",
 };
-const EMOTION_VARIANTS = [
-  { key: "happy", description: "happy, smiling expression" },
-  { key: "sad", description: "sad, teary-eyed expression" },
-  { key: "wow", description: "surprised, wide-eyed wow expression" },
-  { key: "love", description: "loving expression, small floating hearts" },
-  { key: "angry", description: "angry, furrowed-brow expression" },
-  { key: "wink", description: "playful winking expression" },
-];
-
-const creator = createCreatorFeatures({supabaseRequest,generatedCache,extractUserId,getBotUsername,telegramApi,createStickerSet,addStickerToSet,invalidateStickerSetCache,generateStickerSet,isAccountBanned,getOrCreateBalance,TIERS,STICKER_ART_STYLES});
+const creator = createCreatorFeatures({
+  supabaseRequest, generatedCache, extractUserId, getBotUsername, telegramApi,
+  createStickerSet, addStickerToSet, invalidateStickerSetCache, generateStickerSet,
+  isAccountBanned, getOrCreateBalance, getFreeEmotionUsage, getFreeDailyImageUsage,
+  isOwnerUser, TIERS, STICKER_ART_STYLES, EMOTION_VARIANTS,
+});
 creator.register(app);
 
 function studioBenefitsText(tier) {
-  if (tier === "ultimate") return "Темы Obsidian Observatory и Origami Atelier, 3D-look и другие стили, наборы из 6 или 24 эмоций одним запуском.";
-  if (tier === "luxury") return "Тема Gold Atelier, 3D-look и другие стили генерации.";
-  return "";
+  if (tier === "ultimate") return "Темы Obsidian Observatory и Origami Atelier, 3D-look и другие стили, наборы из 2–36 эмоций одним запуском.";
+  if (tier === "luxury") return "Тема Gold Atelier, 3D-look и другие стили генерации, наборы из 2–10 эмоций одним запуском.";
+  if (tier === "standard") return "Наборы из 2–6 эмоций одним запуском.";
+  return "Наборы из 2–8 эмоций один раз в день; общий дневной лимит — 8 стикеров.";
 }
 
 async function getOrCreateSubscription(userId) {
@@ -658,6 +695,9 @@ app.post("/api/subscription/status", async (req, res) => {
     const balance = bonusApplied > 0 ? await getOrCreateBalance(userId) : undefined;
     const active = isSubActive(sub);
     const cfg = tierConfig(sub);
+    const [freeDaily, freeEmotion] = !cfg && !isOwnerUser(userId)
+      ? await Promise.all([getFreeDailyImageUsage(userId), getFreeEmotionUsage(userId)])
+      : [null, null];
 
     res.json({
       active,
@@ -683,6 +723,8 @@ app.post("/api/subscription/status", async (req, res) => {
           : null,
       },
       bonusApplied,
+      ...(freeDaily ? { freeDaily: { ...freeDaily, remaining: Math.max(0, freeDaily.limit - freeDaily.used) } } : {}),
+      freeEmotion,
       ...(balance !== undefined ? { balance } : {}),
     });
   } catch (err) {
@@ -725,8 +767,9 @@ app.post("/api/help/ask", async (req, res) => {
     "Answer only questions about using the app, generating stickers, sticker packs, balance, and the visible subscription terms.",
     "Do not claim you changed a user's account or payment. Never ask for passwords, bot tokens, or secret keys.",
     `Current 30-day subscription terms: ${Object.entries(TIERS).map(([tier, cfg]) => `${cfg.label}: first month ${cfg.firstStars} Stars, manual renewal ${cfg.renewStars} Stars, ${GEN_COST_PER_IMAGE - cfg.discountPerImage} balance credits per image, up to ${cfg.maxImages} images per batch${cfg.dailyBonus > 0 ? `, ${cfg.dailyBonus} daily balance credits` : ", no daily coin bonus"}`).join("; ")}.`,
-    "Luxury adds the Gold Atelier interface theme and server-supported vector, clay 3D-look, paper-cut, and anime generation styles. Ultimate includes these features, two Ultimate interface themes, and automatic packs of 24 emotions. The existing emotion-set shortcut generates six static stickers with happy, sad, wow, love, angry, and wink expressions in one request. This costs 12 coins for six successful stickers; failed images are refunded as usual.",
-    "Styles control the image-generation prompt. A 3D-look sticker is a static raster illustration, not a 3D model or animated sticker. The emotion-set uses six normal image generations and cannot guarantee identical character details across independently generated images. Saved recipes and favorite-pack controls are no longer part of the interface.",
+    "Free accounts can generate up to eight successful images per UTC day, shared between the app, bot, and emotion jobs. They can start one emotion job per UTC day with 2–8 emotions, charged five coins per successful image; the job still requires enough remaining daily image slots. Emotion jobs allow 2–6 emotions on Standard at four coins each, 2–10 on Luxury at three coins each, and 2–36 on Ultimate at two coins each. Failed images are refunded as usual.",
+    "Luxury adds the Gold Atelier interface theme and server-supported vector, clay 3D-look, paper-cut, and anime generation styles. Ultimate includes these features and two Ultimate interface themes. The existing paid emotion-set shortcut generates six static stickers with happy, sad, wow, love, angry, and wink expressions in one request, at the plan's image price.",
+    "Styles control the image-generation prompt. A 3D-look sticker is a static raster illustration, not a 3D model or animated sticker. Emotion jobs use separate image generations and cannot guarantee identical character details across independently generated images. Saved recipes and favorite-pack controls are no longer part of the interface.",
     `Premium can also be purchased with coins: ${Object.entries(subscriptionCoinPrices()).map(([tier, amount]) => `${TIERS[tier].label} ${amount}`).join(", ")}, for 30 days. One coin purchase per account every three calendar months across all tiers; Stars purchases have no such cooldown. Coin prices use the regular Stars renewal price times 8 coins per Star times 2.5, without an introductory discount.`,
     `Reply in ${language}, in at most 5 short sentences. If unsure, say so and suggest the in-app tutorial or contacting the bot owner.`,
     `User question: ${question}`,
@@ -878,7 +921,7 @@ app.post("/api/generate", async (req, res) => {
     const sub = await getOrCreateSubscription(userId);
     const cfg = tierConfig(sub);
     const premium = !!cfg;
-    const maxImages = cfg ? cfg.maxImages : 4;
+    const maxImages = cfg ? cfg.maxImages : FREE_DAILY_IMAGE_LIMIT;
     const costPerImage = cfg ? GEN_COST_PER_IMAGE - cfg.discountPerImage : GEN_COST_PER_IMAGE;
 
     const style = req.body.style ?? "vector";
@@ -892,14 +935,14 @@ app.post("/api/generate", async (req, res) => {
     if (preset !== "none" && preset !== "emotions") {
       return res.status(400).json({ error: "unknown generation preset", code: "INVALID_PRESET" });
     }
-    if (preset === "emotions" && cfg !== TIERS.ultimate) {
-      return res.status(403).json({ error: "emotion sets require Ultimate", code: "PRESET_TIER_REQUIRED" });
+    if (preset === "emotions" && !premium && !isOwnerUser(userId)) {
+      return res.status(403).json({ error: "free emotion sets require the daily emotion job", code: "FREE_EMOTIONS_JOB_REQUIRED" });
     }
-    if (preset === "emotions" && Number(count) !== EMOTION_VARIANTS.length) {
+    if (preset === "emotions" && Number(count) !== 6) {
       return res.status(400).json({ error: "emotion sets require exactly six images", code: "INVALID_PRESET_COUNT" });
     }
 
-    const NUM_IMAGES = Math.min(Math.max(parseInt(count, 10) || 4, 1), maxImages);
+    const NUM_IMAGES = preset === "emotions" ? 6 : Math.min(Math.max(parseInt(count, 10) || 4, 1), maxImages);
     const limitedFreeUser = !premium && !isOwnerUser(userId);
     const reservedSlots = limitedFreeUser ? await reserveFreeDailyImageSlots(userId, NUM_IMAGES) : [];
     const requestedImages = limitedFreeUser ? reservedSlots.length : NUM_IMAGES;
@@ -952,6 +995,15 @@ app.post("/api/generate", async (req, res) => {
 
 async function generateStickerSet(prompt, numImages, urlBuilder, options = {}) {
   const { cfg = null, style = "vector", preset = "none", background = stickerBackground(), userId } = options;
+  const requestedEmotion = typeof options.emotion === "string" ? options.emotion : options.emotion?.key;
+  const canonicalEmotion = options.emotion === undefined || options.emotion === null
+    ? null
+    : EMOTION_VARIANTS.find((emotion) => emotion.key === requestedEmotion);
+  if (options.emotion !== undefined && options.emotion !== null && !canonicalEmotion) {
+    const error = new Error("unknown sticker emotion");
+    error.code = "INVALID_EMOTION";
+    throw error;
+  }
   const stickerPrompt =
     `sticker, ${prompt.trim()}, ${STICKER_ART_STYLES[style]}, ` +
     `${backgroundPrompt(background)}, centered, high contrast` +
@@ -961,7 +1013,7 @@ async function generateStickerSet(prompt, numImages, urlBuilder, options = {}) {
 
   for (let i = 0; i < numImages; i++) {
     try {
-      const emotion = preset === "emotions" ? EMOTION_VARIANTS[i] : null;
+      const emotion = canonicalEmotion || (preset === "emotions" ? EMOTION_VARIANTS[i] : null);
       const imagePrompt = emotion
         ? `${stickerPrompt}, one recurring character matching the same original idea, ${emotion.description}`
         : stickerPrompt;
@@ -972,7 +1024,7 @@ async function generateStickerSet(prompt, numImages, urlBuilder, options = {}) {
         id,
         url: urlBuilder ? urlBuilder(id) : "/api/image/" + id,
         animated: false,
-        ...(emotion ? { emotion: emotion.key } : {}),
+        ...(emotion ? { emotion: emotion.key, emoji: emotion.emoji } : {}),
       });
     } catch (err) {
       console.error(`Ошибка генерации картинки #${i}:`, err.message);
@@ -1615,9 +1667,10 @@ const HELP_COMMANDS_TEXT =
   "<code>/save название пака</code> — сохранить последнюю генерацию\n\n" +
   "💰 <b>Баланс</b>\n" +
   "У новых — 15 $ бесплатно. Не хватает? Купи $ за Telegram Stars в приложении, либо спроси про промокод.\n\n" +
+  "Без подписки — до 8 успешно созданных стикеров в день для бота и приложения вместе, обновление в 00:00 UTC. Набор из 2–8 эмоций можно запустить один раз в день; он расходует этот же лимит и стоит 5 монет за успешный стикер.\n\n" +
   "🔴 <b>Premium (Standard / Luxury / Ultimate)</b>\n" +
   "Скидки на генерацию и больше картинок за раз. Первый месяц: Standard 21⭐, Luxury 65⭐, Ultimate 287⭐; продление вручную: 32⭐, 99⭐ и 438⭐ соответственно. Все тарифы — без ежедневных монетных подарков. Кнопка Premium — в приложении.\n" +
-  "Luxury: тема Gold Atelier и быстрый выбор стиля — вектор, 3D-look, бумага, аниме. Ultimate: эти возможности, темы Obsidian Observatory и Origami Atelier и 6 эмоций одного персонажа за один запуск (12 монет за 6 успешно созданных стикеров). 3D-look — статичная иллюстрация с объёмным видом.\n\n" +
+  "Наборы эмоций: Standard — 2–6, Luxury — 2–10, Ultimate — 2–36 за один запуск. Цена за успешный стикер: 4, 3 и 2 монеты соответственно; за несозданные картинки — возврат. Luxury: тема Gold Atelier и стили — вектор, 3D-look, бумага, аниме. Ultimate: эти возможности и темы Obsidian Observatory и Origami Atelier. 3D-look — статичная иллюстрация с объёмным видом.\n\n" +
   "Покупка на 30 дней за монеты: Standard 640, Luxury 1980, Ultimate 8760. Доступна раз в три календарных месяца на аккаунт.\n\n" +
   "🔍 <b>Где сохранённые стикеры</b>\n" +
   "Иконка стикеров в поле ввода сообщения → «Мои наборы». Управлять паками (переименовать, удалить) — через официального бота @Stickers.\n\n" +
@@ -1629,13 +1682,14 @@ const SYSTEM_CONTEXT = `Ты — дружелюбный помощник Telegra
 2) прямо в чате с ботом текстовыми командами: "/create описание" генерирует 4 картинки, а
 "/save название пака" сохраняет их как стикерпак. Стоимость генерации — 5 $ за картинку по умолчанию.
 Новым пользователям выдаётся 15 $ бесплатно. Есть три уровня Premium-подписки через Telegram Stars:
+Без подписки общий лимит — 8 успешно созданных стикеров в день для бота и приложения вместе, обновление в 00:00 UTC. Набор из 2–8 эмоций можно запустить один раз в день, он стоит 5 монет за успешную картинку и расходует тот же дневной лимит.
 Standard (21⭐ первый месяц, затем 32⭐) даёт 4 монеты за картинку, до 6 картинок за раз, без ежедневных монетных подарков;
 Luxury (65⭐ первый месяц, затем 99⭐) даёт 3 монеты за картинку и до 10 картинок за раз;
 Ultimate (287⭐ первый месяц, затем 438⭐) даёт 2 монеты за картинку и до 12 картинок за раз.
 У Luxury и Ultimate ежедневных монетных бонусов нет. Подписки вручную продлеваются раз в 30 дней.
 В мини-приложении Luxury даёт тему Gold Atelier и быстрый выбор стиля генерации: вектор, 3D-look (объёмная глиняная иллюстрация), бумага и аниме.
-Ultimate включает эти возможности, темы Obsidian Observatory и Origami Atelier и набор из 6 эмоций: радость, грусть, удивление, любовь, злость, подмигивание. Пользователь вводит одну идею и включает этот режим перед генерацией. Цена — 12 монет за 6 успешных стикеров; за несозданные картинки монеты возвращаются.
-В Ultimate доступен автоматический набор из 24 эмоций: максимум 48 монет, за несозданные стикеры — возврат. В приложении также доступны загрузка своих PNG/JPEG/WebP, выбор фона и приглашения в общий набор. Участники добавляют, владелец управляет набором. Прозрачный фон отделяется при возможности; если отделение не удалось, картинка не засчитывается. 3D-look создаёт статичную иллюстрацию, не 3D-модель и не анимированный стикер. Независимые генерации не гарантируют полное совпадение деталей персонажа. Темы меняют интерфейс. Сохранённые шаблоны и избранные наборы убраны из интерфейса.
+Ultimate включает эти возможности и темы Obsidian Observatory и Origami Atelier. Наборы эмоций доступны во всех тарифах: Standard — 2–6 эмоций по 4 монеты, Luxury — 2–10 по 3 монеты, Ultimate — 2–36 по 2 монеты за успешный стикер. Пользователь вводит одну идею и выбирает количество эмоций. За несозданные картинки монеты возвращаются.
+Обычные генерации по-прежнему ограничены 6, 10 и 12 картинками за раз для Standard, Luxury и Ultimate. В приложении также доступны загрузка своих PNG/JPEG/WebP, выбор фона и приглашения в общий набор. Участники добавляют, владелец управляет набором. Прозрачный фон отделяется при возможности; если отделение не удалось, картинка не засчитывается. 3D-look создаёт статичную иллюстрацию, не 3D-модель и не анимированный стикер. Независимые генерации не гарантируют полное совпадение деталей персонажа. Темы меняют интерфейс. Сохранённые шаблоны и избранные наборы убраны из интерфейса.
 Подписки также можно купить за монеты в приложении: Standard 640, Luxury 1980, Ultimate 8760 на 30 дней. Покупка за монеты доступна раз в три календарных месяца на аккаунт для всех тарифов вместе; ограничение не относится к Stars.
 После сохранения стикеры сразу появляются в личном списке стикерпаков в
 Telegram: их можно найти через встроенный поиск стикеров в любом чате (иконка стикеров в поле ввода
@@ -1768,7 +1822,7 @@ async function handleChatMessage(message) {
     const reservedSlots = limitedFreeUser ? await reserveFreeDailyImageSlots(fromId, CHAT_GEN_COUNT) : [];
     const requestedImages = limitedFreeUser ? reservedSlots.length : CHAT_GEN_COUNT;
     if (requestedImages === 0) {
-      await sendTelegramMessage(chatId, "На сегодня достигнут лимит: 4 стикера для бесплатного аккаунта. Лимит общий для бота и приложения и обновляется в 00:00 UTC.");
+      await sendTelegramMessage(chatId, `На сегодня достигнут лимит: ${FREE_DAILY_IMAGE_LIMIT} стикеров для бесплатного аккаунта. Лимит общий для бота и приложения и обновляется в 00:00 UTC.`);
       return;
     }
     const cost = requestedImages * costPerImage;
