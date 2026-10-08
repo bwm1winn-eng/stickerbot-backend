@@ -1156,25 +1156,79 @@
   html[data-theme="oled"] .premium-badge{animation:none;text-shadow:none}
   html[data-theme="oled"] .premium-btn,html[data-theme="oled"] .tier-toggle-opt{box-shadow:none}
   html[data-theme="oled"] .modal,html[data-theme="oled"] .prompt-box,html[data-theme="oled"] .main-tabs,html[data-theme="oled"] .theme-btn{box-shadow:none;backdrop-filter:none}
-  html[data-theme="editorial"]{--bg:#f9f6ee;--bg-glow-1:transparent;--bg-glow-2:transparent;--panel:#fffdf8;--panel-solid:#fffdf8;--line:#bcb7ab;--text:#181b20;--text-dim:#62615a;--text-faint:#78766f;--gold:#2059a1;--overlay:rgba(23,24,29,.5);color-scheme:light}
   html[data-theme="light"]{color-scheme:light}
-  html[data-theme="editorial"] .bg-decor,html[data-theme="editorial"] .bg-grid{display:none}
-  html[data-theme="editorial"] .app{max-width:640px}
-  html[data-theme="editorial"] .topbar{border-bottom:2px solid var(--text);padding-bottom:14px;margin-bottom:18px}
-  html[data-theme="editorial"] #titleText{font-family:Georgia,serif;font-size:clamp(28px,6vw,38px);font-weight:500;line-height:1.12;letter-spacing:-.035em}
-  html[data-theme="editorial"] .main-tabs{padding:0;gap:0;background:transparent;border-width:0 0 1px;border-radius:0;margin-bottom:22px}
-  html[data-theme="editorial"] .main-tab{border-radius:0;padding:12px 6px;border-bottom:2px solid transparent}
-  html[data-theme="editorial"] .main-tab.active{background:transparent;color:var(--text);border-bottom-color:var(--text);box-shadow:none}
-  html[data-theme="editorial"] .prompt-box,html[data-theme="editorial"] .premium-workspace,html[data-theme="editorial"] .library-pack,html[data-theme="editorial"] .modal,html[data-theme="editorial"] .settings-select{border-radius:4px;box-shadow:none;background:var(--panel)}
-  html[data-theme="editorial"] .theme-btn,html[data-theme="editorial"] .chip,html[data-theme="editorial"] .generate-btn,html[data-theme="editorial"] .premium-emotions{border-radius:5px}
-  html[data-theme="editorial"] .history-row{border-radius:0;border-width:0 0 1px;background:transparent}
-  html[data-theme="editorial"] .modal::before{display:none}
+  html[data-theme="prism"]{--bg:#edf2f5;--bg-glow-1:rgba(27,148,154,.12);--bg-glow-2:rgba(121,89,211,.10);--panel:#fff;--panel-solid:#fff;--line:#d5e0e6;--text:#172c3b;--text-dim:#536b7d;--text-faint:#677f8d;--gold:#176c78;--overlay:rgba(23,44,59,.45);color-scheme:light}
+  html[data-theme="prism"],html[data-theme="prism"] body{height:auto;}
+  html[data-theme="prism"] body{background:linear-gradient(135deg,#edf2f5,#f4f1fb 65%,#e8f4f3);}
+  html[data-theme="prism"] .bg-grid,html[data-theme="prism"] .bg-decor{display:none;}
+  html[data-theme="prism"] .app{max-width:1080px;}
+  html[data-theme="prism"] .topbar{padding:12px 16px;margin-bottom:18px;background:var(--panel);border:1px solid var(--line);border-radius:24px;box-shadow:0 5px 24px #23394b08;}
+  html[data-theme="prism"] .brand{display:flex;gap:9px;align-items:center;padding-top:8px;color:#176c78;font-size:17px;}
+  html[data-theme="prism"] .brand::before{content:'';width:19px;height:23px;background:linear-gradient(145deg,#74d4bf,#678ce5 55%,#bd84e7);clip-path:polygon(50% 0,100% 32%,78% 100%,20% 100%,0 32%);}
+  html[data-theme="prism"] .theme-btn{border-radius:12px;background:#f1f5f7;}
+  html[data-theme="prism"] .balance{border-radius:12px;background:#e5f4ef;border-color:#c8e8dc;}
+  html[data-theme="prism"] .main-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:0;margin:0 0 24px;background:transparent;border:0;}
+  html[data-theme="prism"] .main-tab{min-height:52px;padding:10px 5px;border:1px solid var(--line);background:#ffffff9e;border-radius:16px;color:var(--text-dim);font-size:12px;overflow-wrap:anywhere;}
+  html[data-theme="prism"] .main-tab.active{background:#172c3b;color:#fff;border-color:#172c3b;box-shadow:0 5px 12px #172c3b18;}
+  html[data-theme="prism"] #createView{display:grid;gap:14px;grid-template-columns:minmax(0,1fr);grid-template-areas:'head' 'sub' 'idea' 'controls' 'details' 'action' 'import' 'progress' 'resulthead' 'notice' 'output' 'empty';}
+  html[data-theme="prism"] #createView[hidden]{display:none;}
+  html[data-theme="prism"] #titleText{grid-area:head;margin:3px 0 7px;font-size:clamp(26px,5vw,36px);font-weight:700;letter-spacing:-.035em;line-height:1.16;max-width:700px;}
+  html[data-theme="prism"] #subText{grid-area:sub;}
+  html[data-theme="prism"] .prompt-box{grid-area:idea;padding:22px;margin:0;border-radius:24px;background:#fff;border-color:#fff;box-shadow:0 10px 30px #23394b07;}
+  html[data-theme="prism"] #promptInput{min-height:140px;font-size:17px;line-height:1.6;}
+  html[data-theme="prism"] .creator-controls{grid-area:controls;margin:0;padding:20px;border-radius:24px;background:#e5f4ef;border-color:#c6e3d7;box-shadow:none;}
+  html[data-theme="prism"] .creator-settings{grid-area:details;margin:0;border-radius:18px;background:#f3edfb;border-color:#ded4ef;}
+  html[data-theme="prism"] .creator-settings>summary{color:#584279;}
+  html[data-theme="prism"] .creator-import{grid-area:import;margin:0;padding:12px 16px;background:#ffffff80;border:1px dashed #b6c9d5;border-radius:18px;}
+  html[data-theme="prism"] #generateBtn{grid-area:action;min-height:60px;border-radius:18px;background:#176c78;color:#fff;box-shadow:0 5px 18px #176c781d;margin:0;}
+  html[data-theme="prism"] #generateBtn.insufficient{background:#e5edf1;color:var(--text-dim);box-shadow:none;}
+  html[data-theme="prism"] #creatorProgress{grid-area:progress;margin:0;}
+  html[data-theme="prism"] #resultsTitle{grid-area:resulthead;margin:10px 0 0;}
+  html[data-theme="prism"] #genHintBanner{grid-area:notice;margin:0;}
+  html[data-theme="prism"] #grid{grid-area:output;gap:12px;}
+  html[data-theme="prism"] #emptyState{grid-area:empty;border:1px dashed #b6c9d5;border-radius:24px;margin:0;padding:32px;background:#ffffff70;}
+  html[data-theme="prism"] .settings-select{background:#ffffffc9;border-radius:12px;}
+  html[data-theme="prism"] .count-opt{border-radius:10px;background:#ffffffa8;color:#375949;}
+  html[data-theme="prism"] .count-opt.active{background:#176c78;color:#fff;border-color:#176c78;}
+  html[data-theme="prism"] .sticker-card{border-radius:24px;padding:10px;background:#fff;border-color:#fff;box-shadow:0 6px 22px #23394b09;}
+  html[data-theme="prism"] .sticker-card:nth-child(3n+2){background:#f2edfa;}
+  html[data-theme="prism"] .sticker-card:nth-child(3n){background:#eaf6f2;}
+  html[data-theme="prism"] .sticker-card.selected{border:2px solid #176c78;box-shadow:0 6px 20px #176c7817;}
+  html[data-theme="prism"] .library-pack{border-radius:24px;padding:20px;background:#fff;box-shadow:0 6px 22px #23394b07;}
+  html[data-theme="prism"] .history-row,html[data-theme="prism"] .task-card{border-radius:18px;background:#fff;}
+  html[data-theme="prism"] .modal{border-radius:26px;background:#fff;}
+  html[data-theme="prism"] .footer-bar{background:#ffffffeb;border-top:1px solid var(--line);}
+  html[data-theme="prism"] .footer-inner{max-width:1080px;}
+  html[data-theme="prism"] .add-btn{background:#172c3b;color:#fff;border-radius:14px;}
+  @media(min-width:760px){
+    html[data-theme="prism"] .app{display:grid;grid-template-columns:112px minmax(0,1fr);column-gap:24px;align-items:start;}
+    html[data-theme="prism"] .topbar{grid-column:1/-1;}
+    html[data-theme="prism"] .main-tabs{grid-column:1;grid-row:2/9;grid-template-columns:1fr;position:sticky;top:20px;}
+    html[data-theme="prism"] .main-tab{min-height:74px;font-size:13px;}
+    html[data-theme="prism"] #createView,html[data-theme="prism"] #libraryView,html[data-theme="prism"] #historyView,html[data-theme="prism"] #tasksView,html[data-theme="prism"] #creatorJoin{grid-column:2;}
+    html[data-theme="prism"] #createView{grid-template-columns:minmax(0,1.2fr) minmax(260px,1fr);grid-template-areas:'head head' 'sub sub' 'idea controls' 'idea details' 'import action' 'progress progress' 'resulthead resulthead' 'notice notice' 'output output' 'empty empty';}
+    html[data-theme="prism"] #promptInput{min-height:190px;}
+    html[data-theme="prism"] #grid{grid-template-columns:repeat(3,minmax(0,1fr));}
+  }
+  @media(max-width:359px){html[data-theme="prism"] .topbar{padding:10px;}html[data-theme="prism"] .main-tab{font-size:11px;}html[data-theme="prism"] .prompt-box,html[data-theme="prism"] .creator-controls{padding:16px;}}
   html[data-motion="reduced"] .prompt-box{animation:none!important}
   html[data-page-hidden="yes"] .prompt-box{animation-play-state:paused!important}
   @media(prefers-reduced-motion:reduce){html[data-theme="ultimate-aurora"] .prompt-box{animation:none!important}}
 
   [hidden]{display:none!important;}
   .creator-settings{border:1px solid var(--line);background:var(--panel);border-radius:18px;padding:14px 16px;margin:18px 0;}
+  .creator-controls{border:1px solid var(--line);background:var(--panel);border-radius:18px;padding:18px 16px;margin:16px 0;}
+  .creator-controls .settings-field:first-child{margin-top:0;}
+  .creator-quantity{margin-top:18px;}
+  .creator-quantity>span{color:var(--text-dim);font-size:12px;font-weight:700;}
+  .creator-controls .count-row{margin:10px 0 16px;gap:7px;flex-wrap:wrap;}
+  .creator-controls .count-row .settings-select{width:100%;}
+  .creator-controls .cost-hint{margin:12px 0 0;display:flex;flex-wrap:wrap;gap:8px;line-height:1.6;}
+  .creator-controls .free-daily-hint,.creator-quota-note{display:block;line-height:1.65;color:var(--text-dim);font-size:12px;margin-top:8px;}
+  .creator-quota-note[hidden]{display:none;}
+  .creator-settings>summary{line-height:1.65;}
+  #creatorSettingsSummary{display:block;margin:4px 0 0;padding-inline-start:16px;font-weight:500;}
+  #creatorInviteExpiry{display:block;color:var(--text-dim);font-size:12px;line-height:1.6;margin-bottom:16px;}
   .creator-settings>summary,.creator-text-tools>summary,.creator-pack-menu>summary{cursor:pointer;min-height:30px;font-size:13px;font-weight:700;color:var(--text);}
   .creator-settings .premium-workspace{margin:18px 0 8px;padding:0;border:0;background:transparent;}
   .creator-settings .count-row{margin:18px 0 0;}
@@ -1310,7 +1364,15 @@
 
 
   <div class="creator-import"><label class="prompt-tool" for="creatorUpload"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5"/></svg><span id="creatorUploadLabel">Upload image</span></label><input id="creatorUpload" type="file" accept="image/png,image/jpeg,image/webp"><small id="creatorUploadHint"></small></div>
-  <details class="creator-settings" id="creatorSettings"><summary id="creatorSettingsLabel">Creation settings</summary>
+  <section class="creator-controls" aria-labelledby="creatorModeLabel">
+    <div class="settings-field" id="creatorModeRow"><label for="creatorMode" id="creatorModeLabel">Mode</label><select class="settings-select" id="creatorMode"><option value="single">Individual stickers</option><option value="pack24">Emotion pack</option></select></div>
+    <div class="creator-quantity"><span id="creatorQuantityLabel">Quantity</span><div class="count-row" id="countRow" role="group" aria-labelledby="creatorQuantityLabel"></div></div>
+    <div class="settings-field" id="creatorPackFields" hidden><input class="settings-select" id="creatorPackName" maxlength="64" placeholder="Pack title" aria-label="Pack title"><small id="creatorPackHint"></small></div>
+    <small class="free-daily-hint" id="freeDailyHint" aria-live="polite"></small>
+    <small class="creator-quota-note" id="freeEmotionHint" aria-live="polite"></small>
+    <div class="cost-hint"><span id="costText"></span><span id="hintBalance"></span></div>
+  </section>
+  <details class="creator-settings" id="creatorSettings"><summary><span id="creatorSettingsLabel">Creation settings</span><small id="creatorSettingsSummary"></small></summary>
     <div class="settings-field"><label id="creatorBackgroundLabel" for="creatorBackground">Background</label><select class="settings-select" id="creatorBackground"><option value="white">White</option><option value="black">Black</option><option value="color">Custom colour</option><option value="transparent">Transparent</option></select><input type="color" id="creatorBackgroundColor" value="#ffffff" aria-labelledby="creatorBackgroundLabel" hidden><small id="creatorTransparentHint" hidden></small></div>
   <section class="premium-workspace" id="premiumWorkspace" hidden aria-labelledby="premiumWorkspaceTitle">
     <h2 id="premiumWorkspaceTitle"></h2><p id="premiumWorkspaceHint"></p>
@@ -1319,22 +1381,9 @@
         <option value="">Original</option><option value="vector">Clean vector</option><option value="clay3d">Sculpted 3D clay</option><option value="paper">Paper cut</option><option value="anime">Anime</option>
       </select>
     </label>
-    <label class="premium-emotions" id="premiumEmotionControl" hidden>
-      <input id="premiumEmotionSet" type="checkbox"><span><strong id="premiumEmotionLabel"></strong><small id="premiumEmotionHint"></small></span>
-    </label>
   </section>
-  <div class="count-row" id="countRow"></div>
-
-    <div class="settings-field" id="creatorModeRow" hidden><label for="creatorMode" id="creatorModeLabel">Mode</label><select class="settings-select" id="creatorMode"><option value="single">Individual stickers</option><option value="pack24">24 emotions · Ultimate</option></select></div>
-    <div class="settings-field" id="creatorPackFields" hidden><input class="settings-select" id="creatorPackName" maxlength="64" placeholder="Pack title" aria-label="Pack title"><small id="creatorPackHint"></small></div>
   </details>
-  <section class="creator-progress" id="creatorProgress" hidden aria-live="polite"><progress id="creatorProgressBar" value="0" max="24"></progress><p id="creatorProgressText"></p></section>
-  <small class="free-daily-hint" id="freeDailyHint" hidden></small>
-
-  <div class="cost-hint">
-    <span id="costText">Генерация — <strong style="color:var(--text)">20 $</strong></span>
-    <span id="hintBalance">У тебя: 15</span>
-  </div>
+  <section class="creator-progress" id="creatorProgress" hidden aria-live="polite"><progress id="creatorProgressBar" value="0" max="8"></progress><p id="creatorProgressText"></p></section>
 
   <button class="generate-btn ripple-host" id="generateBtn">
     <span id="genBtnText">Сгенерировать</span>
@@ -1523,7 +1572,7 @@
       <label id="settingsThemeLabel" for="themeSelect">Стиль интерфейса</label>
       <select class="settings-select" id="themeSelect">
         <option value="light">Light</option><option value="original">Dark · Original</option>
-        <option value="oled">Pure Black</option><option value="editorial">Editorial</option>
+        <option value="oled">Pure Black</option><option value="prism">Prism Studio</option>
         <option value="violet">Violet</option><option value="graphite">Graphite</option>
         <option value="luxury-gold">Gold Atelier · Luxury</option><option value="ultimate-origami">Origami Atelier · Ultimate</option><option value="ultimate-obsidian">Obsidian Observatory · Ultimate</option>
       </select>
@@ -1624,7 +1673,7 @@
 <div class="settings-field"><label id="adminReasonLabel" for="adminReason">Note (optional)</label><input class="settings-select" id="adminReason" maxlength="300"></div>
 <div style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0;"><button class="game-start-btn" style="width:auto;flex:1;" id="adminGrant" type="button">Grant plan</button><button class="game-close-btn" id="adminRevoke" type="button">Revoke plan</button><button class="game-close-btn" id="adminSet" type="button">Set coins</button><button class="game-close-btn" id="adminBan" type="button">Ban</button><button class="game-close-btn" id="adminUnban" type="button">Unban</button></div>
 <p id="adminStatus" role="status" aria-live="polite" style="white-space:pre-wrap;overflow-wrap:anywhere;"></p></div></div>
-<div class="modal-overlay" id="creatorInviteModal"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="creatorInviteCopy"><button class="modal-close" type="button" id="creatorInviteClose" aria-label="Close">×</button><input class="settings-select" id="creatorInviteLink" readonly aria-label="Invitation link"><button class="library-action" type="button" id="creatorInviteCopy">Copy invitation</button></div></div>
+<div class="modal-overlay" id="creatorInviteModal"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="creatorInviteCopy"><button class="modal-close" type="button" id="creatorInviteClose" aria-label="Close">×</button><input class="settings-select" id="creatorInviteLink" readonly aria-label="Invitation link"><small id="creatorInviteExpiry"></small><button class="library-action" type="button" id="creatorInviteCopy">Copy invitation</button></div></div>
 <div class="modal-overlay" id="creatorMembersModal"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="creatorMembersTitle"><button class="modal-close" type="button" id="creatorMembersClose" aria-label="Close">×</button><h2 id="creatorMembersTitle">Participants</h2><div id="creatorMembersList"></div></div></div>
 <script>
   const tg = window.Telegram?.WebApp;
@@ -1683,21 +1732,48 @@
 
   const BACKEND = 'https://stickerbot-backend.onrender.com';
   const GEN_COST_PER_IMAGE = 5;
-  const FREE_DAILY_LIMIT = 4;
+  const FREE_DAILY_LIMIT = 8;
   let freeDailyState = null;
+  let freeEmotionState = null;
+  const CREATOR_DYNAMIC_KEYS = ['emotion','quantity','noDailyLimit','quotaLoading','emotionReady','emotionUsed','tooFew','createPack','quote','refund','rotate','rotateConfirm','expires','choosePack','loading','priceChanged','inviteUnavailable','packFull'];
+  const CREATOR_DYNAMIC_TEXT = {
+    en:['Emotion pack','Quantity','Daily allowance: unlimited','Loading daily allowance…','Free plan: one emotion pack available today','Free plan: today’s emotion pack has been used','At least two daily stickers are needed for an emotion pack','Create emotion pack','{count} × {price} coins = {cost} coins','Uncreated stickers are refunded.','Replace invitation links','Replace all active invitation links? Existing links will stop working.','Valid until {date}','Choose an existing pack first','Loading packs…','The price changed. Review the updated quote and try again.','This invitation is expired or unavailable.','This shared pack is full.'],
+    ru:['Набор эмоций','Количество','Дневной лимит: без ограничений','Загрузка дневного лимита…','Бесплатный план: сегодня доступен один набор эмоций','Бесплатный план: набор эмоций на сегодня уже использован','Для набора эмоций нужны хотя бы два стикера дневного лимита','Создать набор эмоций','{count} × {price} монет = {cost} монет','За несозданные стикеры — возврат.','Заменить ссылки приглашения','Заменить все активные ссылки? Старые ссылки перестанут работать.','Действует до {date}','Сначала выбери существующий набор','Загрузка наборов…','Цена изменилась. Проверь новый расчёт и повтори.','Приглашение истекло или недоступно.','В общем наборе нет свободных мест.'],
+    es:['Paquete de emociones','Cantidad','Límite diario: ilimitado','Cargando límite diario…','Plan gratis: un paquete de emociones disponible hoy','Plan gratis: ya usaste el paquete de emociones de hoy','Necesitas al menos dos stickers del límite diario','Crear paquete de emociones','{count} × {price} monedas = {cost} monedas','Se reembolsan los stickers no creados.','Reemplazar enlaces de invitación','¿Reemplazar todos los enlaces? Los enlaces anteriores dejarán de funcionar.','Válido hasta {date}','Elige primero un paquete existente','Cargando paquetes…','El precio cambió. Revisa el cálculo y vuelve a intentarlo.','La invitación caducó o no está disponible.','Este paquete compartido está lleno.'],
+    zh:['表情贴纸包','数量','每日额度：无限','正在加载每日额度…','免费方案：今天可创建一个表情包','免费方案：今天的表情包次数已用完','创建表情包至少需要两张每日额度贴纸','创建表情贴纸包','{count} × {price} 金币 = {cost} 金币','未生成的贴纸将退款。','更换邀请链接','更换所有有效邀请链接？旧链接将失效。','有效期至 {date}','请先选择已有贴纸包','正在加载贴纸包…','价格已更改。请检查新报价后重试。','邀请已过期或不可用。','此共享贴纸包已满。'],
+    hi:['भावना पैक','संख्या','दैनिक सीमा: असीमित','दैनिक सीमा लोड हो रही है…','मुफ़्त योजना: आज एक भावना पैक उपलब्ध है','मुफ़्त योजना: आज का भावना पैक इस्तेमाल हो गया','भावना पैक के लिए कम से कम दो दैनिक स्टिकर चाहिए','भावना पैक बनाएँ','{count} × {price} सिक्के = {cost} सिक्के','न बने स्टिकर की लागत वापस मिलेगी।','निमंत्रण लिंक बदलें','सभी सक्रिय लिंक बदलें? पुराने लिंक काम करना बंद कर देंगे।','{date} तक मान्य','पहले मौजूदा पैक चुनें','पैक लोड हो रहे हैं…','कीमत बदल गई। नया मूल्य देखें और फिर कोशिश करें।','निमंत्रण समाप्त या अनुपलब्ध है।','यह साझा पैक भर गया है।'],
+    ar:['حزمة تعابير','العدد','الحد اليومي: غير محدود','جارٍ تحميل الحد اليومي…','الخطة المجانية: حزمة تعابير واحدة متاحة اليوم','الخطة المجانية: استُخدمت حزمة تعابير اليوم','تحتاج الحزمة إلى ملصقين على الأقل من الحد اليومي','إنشاء حزمة تعابير','{count} × {price} عملة = {cost} عملة','تُرد تكلفة الملصقات غير المنشأة.','استبدال روابط الدعوة','استبدال جميع الروابط النشطة؟ ستتوقف الروابط القديمة عن العمل.','صالحة حتى {date}','اختر حزمة موجودة أولاً','جارٍ تحميل الحزم…','تغير السعر. راجع السعر الجديد وحاول مجدداً.','الدعوة منتهية أو غير متاحة.','هذه الحزمة المشتركة ممتلئة.'],
+    pt:['Pacote de emoções','Quantidade','Limite diário: ilimitado','Carregando limite diário…','Plano grátis: um pacote de emoções disponível hoje','Plano grátis: o pacote de emoções de hoje já foi usado','São necessários ao menos dois stickers do limite diário','Criar pacote de emoções','{count} × {price} moedas = {cost} moedas','Stickers não criados são reembolsados.','Substituir links de convite','Substituir todos os links ativos? Os links antigos deixarão de funcionar.','Válido até {date}','Escolha primeiro um pacote existente','Carregando pacotes…','O preço mudou. Confira o novo valor e tente novamente.','Convite expirado ou indisponível.','Este pacote compartilhado está cheio.'],
+    fr:['Pack d’émotions','Quantité','Quota quotidien : illimité','Chargement du quota quotidien…','Offre gratuite : un pack d’émotions disponible aujourd’hui','Offre gratuite : le pack du jour a déjà été utilisé','Le pack nécessite au moins deux stickers du quota quotidien','Créer le pack d’émotions','{count} × {price} pièces = {cost} pièces','Les stickers non créés sont remboursés.','Remplacer les liens d’invitation','Remplacer tous les liens actifs ? Les anciens liens ne fonctionneront plus.','Valable jusqu’au {date}','Choisissez d’abord un pack existant','Chargement des packs…','Le prix a changé. Vérifiez le nouveau montant et réessayez.','Cette invitation a expiré ou est indisponible.','Ce pack partagé est complet.'],
+    ja:['表情パック','枚数','1日の上限：無制限','1日の上限を読み込み中…','無料プラン：本日は表情パックを1つ作成できます','無料プラン：本日の表情パックは使用済みです','表情パックには1日の残り枚数が2枚以上必要です','表情パックを作成','{count} × {price} コイン = {cost} コイン','未生成分は返金されます。','招待リンクを更新','すべての有効なリンクを更新しますか？古いリンクは無効になります。','有効期限：{date}','既存のパックを先に選んでください','パックを読み込み中…','価格が変更されました。新しい金額を確認して再試行してください。','招待の有効期限が切れたか利用できません。','この共有パックは満員です。'],
+    de:['Emotionspaket','Anzahl','Tageslimit: unbegrenzt','Tageslimit wird geladen…','Kostenloser Tarif: heute ein Emotionspaket verfügbar','Kostenloser Tarif: heutiges Emotionspaket bereits genutzt','Mindestens zwei Sticker des Tageslimits sind erforderlich','Emotionspaket erstellen','{count} × {price} Münzen = {cost} Münzen','Nicht erstellte Sticker werden erstattet.','Einladungslinks ersetzen','Alle aktiven Links ersetzen? Alte Links funktionieren dann nicht mehr.','Gültig bis {date}','Wähle zuerst ein vorhandenes Paket','Pakete werden geladen…','Der Preis hat sich geändert. Prüfe den neuen Betrag und versuche es erneut.','Einladung abgelaufen oder nicht verfügbar.','Dieses gemeinsame Paket ist voll.'],
+    id:['Paket emosi','Jumlah','Batas harian: tanpa batas','Memuat batas harian…','Paket gratis: satu paket emosi tersedia hari ini','Paket gratis: paket emosi hari ini sudah digunakan','Paket emosi memerlukan setidaknya dua stiker dari batas harian','Buat paket emosi','{count} × {price} koin = {cost} koin','Stiker yang tidak dibuat akan dikembalikan.','Ganti tautan undangan','Ganti semua tautan aktif? Tautan lama tidak akan berfungsi.','Berlaku hingga {date}','Pilih paket yang ada terlebih dahulu','Memuat paket…','Harga berubah. Periksa harga baru lalu coba lagi.','Undangan kedaluwarsa atau tidak tersedia.','Paket bersama ini penuh.'],
+    tr:['Duygu paketi','Adet','Günlük sınır: sınırsız','Günlük sınır yükleniyor…','Ücretsiz plan: bugün bir duygu paketi kullanılabilir','Ücretsiz plan: bugünkü duygu paketi kullanıldı','Duygu paketi için günlük sınırdan en az iki çıkartma gerekir','Duygu paketi oluştur','{count} × {price} jeton = {cost} jeton','Oluşturulmayan çıkartmalar iade edilir.','Davet bağlantılarını değiştir','Tüm aktif bağlantılar değiştirilsin mi? Eski bağlantılar çalışmayacak.','{date} tarihine kadar geçerli','Önce mevcut bir paket seç','Paketler yükleniyor…','Fiyat değişti. Yeni tutarı kontrol edip tekrar dene.','Davetin süresi dolmuş veya kullanılamıyor.','Bu ortak paket dolu.']
+  };
+  function creatorDynamicText(key, values = {}) {
+    let text = (CREATOR_DYNAMIC_TEXT[lang] || CREATOR_DYNAMIC_TEXT.en)[CREATOR_DYNAMIC_KEYS.indexOf(key)] || key;
+    for (const [name, value] of Object.entries(values)) text = text.replaceAll('{'+name+'}', String(value));
+    return text;
+  }
+  function resolvePackInvite(query, telegramStart) {
+    const explicit = query.getAll('invite').find(value=>/^[A-Za-z0-9_-]{43}$/.test(value));
+    if (explicit) return explicit;
+    const start = [telegramStart, ...query.getAll('tgWebAppStartParam')].find(value=>/^pack_[A-Za-z0-9_-]{43}$/.test(value || ''));
+    return start ? start.slice(5) : '';
+  }
   const FREE_DAILY_TEXT = {
-    en: (left, limit) => `Free stickers today: ${left} of ${limit} left`,
-    ru: (left, limit) => `Бесплатных стикеров сегодня: осталось ${left} из ${limit}`,
-    es: (left, limit) => `Stickers gratis hoy: quedan ${left} de ${limit}`,
-    zh: (left, limit) => `今日免费贴纸剩余：${left}/${limit}`,
-    hi: (left, limit) => `आज मुफ़्त स्टिकर शेष: ${left}/${limit}`,
-    ar: (left, limit) => `الملصقات المجانية المتبقية اليوم: ${left} من ${limit}`,
-    pt: (left, limit) => `Figurinhas grátis hoje: restam ${left} de ${limit}`,
-    fr: (left, limit) => `Autocollants gratuits aujourd’hui : ${left} sur ${limit} restants`,
-    ja: (left, limit) => `本日の無料ステッカー残り：${left}/${limit}`,
-    de: (left, limit) => `Kostenlose Sticker heute: noch ${left} von ${limit}`,
-    id: (left, limit) => `Stiker gratis hari ini: tersisa ${left} dari ${limit}`,
-    tr: (left, limit) => `Bugün kalan ücretsiz çıkartma: ${left}/${limit}`,
+    en: (left, limit) => `Free plan daily allowance: ${left} of ${limit} stickers left`,
+    ru: (left, limit) => `Дневной лимит бесплатного плана: осталось ${left} из ${limit} стикеров`,
+    es: (left, limit) => `Límite diario del plan gratis: quedan ${left} de ${limit} stickers`,
+    zh: (left, limit) => `免费方案每日额度：剩余 ${left}/${limit} 张贴纸`,
+    hi: (left, limit) => `मुफ़्त योजना की दैनिक सीमा: ${left}/${limit} स्टिकर शेष`,
+    ar: (left, limit) => `الحد اليومي للخطة المجانية: ${left} من ${limit} ملصقاً متبقياً`,
+    pt: (left, limit) => `Limite diário do plano grátis: restam ${left} de ${limit} stickers`,
+    fr: (left, limit) => `Quota quotidien de l’offre gratuite : ${left} stickers sur ${limit} restants`,
+    ja: (left, limit) => `無料プランの1日の上限：残り ${left}/${limit} 枚`,
+    de: (left, limit) => `Tageslimit des kostenlosen Tarifs: noch ${left} von ${limit} Stickern`,
+    id: (left, limit) => `Batas harian paket gratis: tersisa ${left} dari ${limit} stiker`,
+    tr: (left, limit) => `Ücretsiz planın günlük sınırı: ${left}/${limit} çıkartma kaldı`,
   };
   const FREE_DAILY_EXHAUSTED = {
     en: 'Your free stickers for today are used up',
@@ -1713,30 +1789,45 @@
     id: 'Stiker gratis hari ini sudah habis',
     tr: 'Bugünkü ücretsiz çıkartma hakkınız bitti',
   };
-  function freeDailyLimitApplies() { return !!freeDailyState && !premiumState.active && !isOwner; }
+  function freeAccount() { return !premiumState.active && !isOwner; }
+  function freeDailyLimitApplies() { return !!freeDailyState && freeAccount(); }
+  function emotionPackSelected() { return document.getElementById('creatorMode')?.value === 'pack24'; }
+  function generationLimit(emotions = emotionPackSelected()) {
+    if (!premiumState.active) return FREE_DAILY_LIMIT;
+    return premiumState.tier === 'ultimate' ? (emotions ? 36 : 12) : premiumState.tier === 'luxury' ? 10 : 6;
+  }
+  function freeEmotionAvailable() {
+    return !freeAccount() || (!!freeEmotionState?.available && freeEmotionState.remaining > 0 && !!freeDailyState && freeDailyState.remaining >= 2);
+  }
   function applyFreeDailyState(value) {
+    const limit = value && Number.isFinite(value.limit) ? Math.max(0, value.limit) : FREE_DAILY_LIMIT;
     freeDailyState = value && Number.isFinite(value.remaining)
-      ? { limit: FREE_DAILY_LIMIT, used: value.used, remaining: Math.max(0, Math.min(FREE_DAILY_LIMIT, value.remaining)) }
+      ? { limit, used: value.used, remaining: Math.max(0, Math.min(limit, value.remaining)) }
       : null;
     renderCountRow();
     renderFreeDailyHint();
     renderBalance();
   }
+  function applyFreeEmotionState(value) {
+    freeEmotionState = value && Number.isFinite(value.remaining)
+      ? { limit: Number.isFinite(value.limit) ? value.limit : 1, used: value.used, remaining: Math.max(0, value.remaining), available: value.available === true, resetAt: value.resetAt || null }
+      : null;
+    renderCountRow(); renderFreeDailyHint(); renderBalance();
+  }
   function renderFreeDailyHint() {
     const hint = document.getElementById('freeDailyHint');
     if (!hint) return;
-    const shouldShow = freeDailyLimitApplies();
-    hint.hidden = !shouldShow;
-    if (shouldShow) {
+    hint.hidden = false;
+    if (freeDailyLimitApplies()) {
       const format = FREE_DAILY_TEXT[lang] || FREE_DAILY_TEXT.en;
       hint.textContent = format(freeDailyState.remaining, freeDailyState.limit);
-    }
+    } else hint.textContent = creatorDynamicText(freeAccount() ? 'quotaLoading' : 'noDailyLimit');
   }
   let premiumState = { active: false, expiresAt: null, tier: null };
 
   const STUDIO_TEXT = {"en":["Quick studio","Choose the look once. Keep your idea simple and editable.","Art style","Original","Clean vector","Sculpted 3D clay","Paper cut","Anime","Emotion set · Ultimate","6 expressions · 6 stickers · 12 coins","Four styles in one tap","Turn one idea into six expressions","Premium feature unavailable","Happy","Sad","Surprised","Love","Angry","Wink"],"ru":["Быстрая студия","Выбери стиль одним нажатием. Идея остаётся простой и редактируемой.","Стиль","Оригинальный","Чистый вектор","Объёмный 3D-пластилин","Бумажная аппликация","Аниме","Набор эмоций · Ultimate","6 эмоций · 6 стикеров · 12 монет","Четыре стиля одним нажатием","Одна идея — шесть эмоций","Платная функция недоступна","Радость","Грусть","Удивление","Любовь","Злость","Подмигивание"],"es":["Estudio rápido","Elige el estilo una vez. Tu idea sigue siendo editable.","Estilo","Original","Vector limpio","Arcilla 3D esculpida","Papel recortado","Anime","Set de emociones · Ultimate","6 expresiones · 6 stickers · 12 monedas","Cuatro estilos con un toque","Una idea, seis expresiones","Función premium no disponible","Feliz","Triste","Sorpresa","Amor","Enfado","Guiño"],"zh":["快速工作室","一键选择画风，创意可随时编辑。","画风","原版","简洁矢量","立体3D黏土","剪纸","动漫","表情套装 · Ultimate","6种表情 · 6张贴纸 · 12金币","一键选择四种画风","一个创意生成六种表情","高级功能不可用","开心","难过","惊讶","爱心","生气","眨眼"],"hi":["त्वरित स्टूडियो","एक बार शैली चुनें। आपका विचार संपादन योग्य रहता है।","शैली","मूल","साफ़ वेक्टर","तराशी गई 3D मिट्टी","पेपर कट","ऐनिमे","भावना सेट · Ultimate","6 भाव · 6 स्टिकर · 12 सिक्के","एक टैप में चार शैलियाँ","एक विचार से छह भाव","प्रीमियम सुविधा उपलब्ध नहीं","खुश","उदास","हैरान","प्यार","गुस्सा","आँख मारना"],"ar":["الاستوديو السريع","اختر المظهر مرة واحدة. تبقى فكرتك قابلة للتعديل.","الأسلوب","الأصلي","رسم متجهي واضح","صلصال ثلاثي الأبعاد","قصاصات ورق","أنمي","مجموعة تعابير · Ultimate","6 تعابير · 6 ملصقات · 12 عملة","أربعة أساليب بلمسة واحدة","فكرة واحدة إلى ستة تعابير","الميزة المميزة غير متاحة","سعيد","حزين","متفاجئ","حب","غاضب","غمزة"],"pt":["Estúdio rápido","Escolha o estilo uma vez. Sua ideia continua editável.","Estilo","Original","Vetor limpo","Argila 3D esculpida","Recorte de papel","Anime","Conjunto de emoções · Ultimate","6 expressões · 6 stickers · 12 moedas","Quatro estilos em um toque","Uma ideia, seis expressões","Recurso premium indisponível","Feliz","Triste","Surpreso","Amor","Raiva","Piscadela"],"fr":["Studio rapide","Choisissez le style une fois. Votre idée reste modifiable.","Style","Original","Vectoriel net","Argile 3D sculptée","Papier découpé","Anime","Pack d’émotions · Ultimate","6 expressions · 6 stickers · 12 pièces","Quatre styles en un geste","Une idée, six expressions","Fonction premium indisponible","Heureux","Triste","Surpris","Amour","En colère","Clin d’œil"],"ja":["クイックスタジオ","一度タップして画風を選択。アイデアは自由に編集できます。","画風","オリジナル","シンプルなベクター","立体3Dクレイ","切り絵","アニメ","表情セット · Ultimate","6つの表情 · 6枚のステッカー · 12コイン","ワンタップで4つの画風","1つのアイデアから6つの表情","プレミアム機能は利用できません","喜び","悲しみ","驚き","愛","怒り","ウインク"],"de":["Schnellstudio","Wähle den Stil einmal. Deine Idee bleibt bearbeitbar.","Stil","Original","Klare Vektorgrafik","Geformte 3D-Knete","Papierschnitt","Anime","Emotionsset · Ultimate","6 Ausdrücke · 6 Sticker · 12 Münzen","Vier Stile mit einem Tippen","Eine Idee, sechs Ausdrücke","Premiumfunktion nicht verfügbar","Fröhlich","Traurig","Überrascht","Liebe","Wütend","Zwinkern"],"id":["Studio cepat","Pilih gaya sekali. Ide Anda tetap bisa diedit.","Gaya","Asli","Vektor bersih","Tanah liat 3D","Potongan kertas","Anime","Set emosi · Ultimate","6 ekspresi · 6 stiker · 12 koin","Empat gaya dalam satu ketukan","Satu ide, enam ekspresi","Fitur premium tidak tersedia","Senang","Sedih","Terkejut","Cinta","Marah","Kedipan"],"tr":["Hızlı stüdyo","Görünümü bir kez seç. Fikrin düzenlenebilir kalır.","Stil","Orijinal","Temiz vektör","Şekillendirilmiş 3D kil","Kâğıt kesim","Anime","Duygu seti · Ultimate","6 ifade · 6 çıkartma · 12 jeton","Tek dokunuşta dört stil","Bir fikir, altı ifade","Premium özellik kullanılamıyor","Mutlu","Üzgün","Şaşkın","Sevgi","Kızgın","Göz kırpma"]};
   let studioReady=false, studioAccessState='', studioExpiryTimer;
-  let quickStyle='', generationPreset='', generationBusy=false;
+  let quickStyle='', generationPreset='', generationBusy=false, generationQuote=null;
   function studioText(){return STUDIO_TEXT[lang]||STUDIO_TEXT.en;}
   function premiumStudioAccess(ultimateOnly=false){
     return !!premiumState.active && !!premiumState.expiresAt && new Date(premiumState.expiresAt).getTime()>Date.now()
@@ -1747,13 +1838,6 @@
     document.getElementById('premiumStyle').addEventListener('change',event=>{
       if(generationBusy||!premiumStudioAccess()){renderStudio();return;}
       quickStyle=event.target.value;renderStudio();
-    });
-    document.getElementById('premiumEmotionSet').addEventListener('change',event=>{
-      if(generationBusy||!premiumStudioAccess(true)){renderStudio();return;}
-      generationPreset=event.target.checked?'emotions':'';
-      if(generationPreset)genCount=6;
-      renderCountRow();renderBalance();renderStudio();
-      document.getElementById('costText').innerHTML=STR[lang].cost(genCost(genCount));
     });
   }
   function renderStudio(){
@@ -1776,9 +1860,6 @@
     const styleLabels={'':t[3],vector:t[4],clay3d:t[5],paper:t[6],anime:t[7]};
     [...select.options].forEach(option=>{option.textContent=styleLabels[option.value];});
     select.value=quickStyle;select.disabled=generationBusy||!unlocked;
-    const control=document.getElementById('premiumEmotionControl');control.hidden=!ultimate;
-    const checkbox=document.getElementById('premiumEmotionSet');checkbox.checked=generationPreset==='emotions';checkbox.disabled=generationBusy||!ultimate;
-    document.getElementById('premiumEmotionLabel').textContent=t[8];document.getElementById('premiumEmotionHint').textContent=t[9];
     const gold=document.querySelector('#themeSelect option[value="luxury-gold"]'),aurora=document.querySelector('#themeSelect option[value="ultimate-aurora"]');
     gold.disabled=!unlocked;gold.textContent='Gold Atelier · Luxury'+(unlocked?'':' 🔒');
     for(const [value,name] of [['ultimate-obsidian','Obsidian Observatory'],['ultimate-origami','Origami Atelier']]){const option=document.querySelector('#themeSelect option[value="'+value+'"]');option.disabled=!ultimate;option.textContent=name+' · Ultimate'+(ultimate?'':' 🔒');}
@@ -1794,6 +1875,9 @@
       ? (premiumState.tier === 'ultimate' ? 3 : premiumState.tier === 'luxury' ? 2 : 1)
       : 0;
     return n * (GEN_COST_PER_IMAGE - discount);
+  }
+  function selectedGenerationQuote() {
+    return window.creatorTools?.quote() || generationQuote || {count:genCount,price:genCost(1),cost:genCost(genCount)};
   }
 
   // ---------- i18n ----------
@@ -3211,7 +3295,8 @@
     document.getElementById('helpBtn').title = lang === 'ru' ? 'Помощь и ИИ-помощник' : 'Help and AI assistant';
     document.getElementById('helpBtn').setAttribute('aria-label', document.getElementById('helpBtn').title);
     const themeLabels=({"en":["Light","Dark · Original","Pure Black","Editorial","Violet","Graphite"],"ru":["Светлая","Тёмная · оригинал","Чистый чёрный","Редакционная","Фиолетовая","Графит"],"es":["Claro","Oscuro · original","Negro puro","Editorial","Violeta","Grafito"],"zh":["浅色","深色·原版","纯黑","编辑风","紫罗兰","石墨"],"hi":["लाइट","डार्क · मूल","शुद्ध काला","संपादकीय","बैंगनी","ग्रेफाइट"],"ar":["فاتح","داكن · الأصلي","أسود خالص","تحريري","بنفسجي","جرافيت"],"pt":["Claro","Escuro · original","Preto puro","Editorial","Violeta","Grafite"],"fr":["Clair","Sombre · original","Noir pur","Éditorial","Violet","Graphite"],"ja":["ライト","ダーク · オリジナル","ピュアブラック","エディトリアル","バイオレット","グラファイト"],"de":["Hell","Dunkel · Original","Reines Schwarz","Editorial","Violett","Graphit"],"id":["Terang","Gelap · asli","Hitam murni","Editorial","Ungu","Grafit"],"tr":["Açık","Koyu · orijinal","Saf siyah","Editoryal","Menekşe","Grafit"]})[lang]||["Light","Dark · Original","Pure Black","Editorial","Violet","Graphite"];
-    const themeValues=['light','original','oled','editorial','violet','graphite'];
+    themeLabels[3]='Prism Studio';
+    const themeValues=['light','original','oled','prism','violet','graphite'];
     const themeMap=Object.fromEntries(themeValues.map((value,i)=>[value,themeLabels[i]]));
     document.querySelectorAll('#themeSelect option').forEach(option=>{
       if(themeMap[option.value])option.textContent=themeMap[option.value];
@@ -3255,7 +3340,8 @@
 
   // ---------- Theme ----------
   function applyTheme(theme) {
-    const supportedThemes = ['original','violet','light','graphite','oled','editorial','luxury-gold','ultimate-obsidian','ultimate-origami'];
+    const supportedThemes = ['original','violet','light','graphite','oled','prism','luxury-gold','ultimate-obsidian','ultimate-origami'];
+    if (theme === 'editorial') theme = 'prism';
     if (theme === 'dark') theme = 'original';
     if (theme === 'ultimate-aurora') theme='ultimate-obsidian';
     if (!supportedThemes.includes(theme)) theme = 'original';
@@ -3265,7 +3351,7 @@
     document.getElementById('themeSelect').value = theme;
     try { localStorage.setItem('stickerTheme', preferredTheme); } catch (e) { /* optional preference */ }
     const chromeColors = {
-      original:'#0a0a0b',violet:'#100d1b',light:'#f4f3ef',graphite:'#111315',oled:'#000000',editorial:'#f9f6ee','luxury-gold':'#100e0b','ultimate-obsidian':'#050811','ultimate-origami':'#faf4e9',
+      original:'#0a0a0b',violet:'#100d1b',light:'#f4f3ef',graphite:'#111315',oled:'#000000',prism:'#edf2f5','luxury-gold':'#100e0b','ultimate-obsidian':'#050811','ultimate-origami':'#faf4e9',
     };
     const chromeColor = chromeColors[theme];
     try {
@@ -3564,6 +3650,7 @@
       isOwner = !!data.isOwner;
       if (data.premium) premiumState = data.premium;
       applyFreeDailyState(data.freeDaily);
+      applyFreeEmotionState(data.freeEmotion);
       updateOwnerControls();
       renderPremiumBadge();
     } catch (e) {
@@ -3673,22 +3760,26 @@
   function renderCountRow() {
     const row = document.getElementById('countRow');
     row.innerHTML = '';
-    if(generationPreset==='emotions'&&premiumStudioAccess(true)){
-      genCount=6;const badge=document.createElement('div');badge.className='count-opt active';badge.textContent='6';badge.setAttribute('aria-label',studioText()[9]);row.appendChild(badge);return;
-    }
-    const maxImages = premiumState.active
-      ? (premiumState.tier === 'ultimate' ? 12 : premiumState.tier === 'luxury' ? 10 : premiumState.tier === 'standard' ? 6 : 4)
-      : 4;
+    const emotions = emotionPackSelected(), minImages = emotions ? 2 : 1;
+    const activeQuote=window.creatorTools?.quote()||generationQuote;
+    const maxImages = Math.max(generationLimit(emotions),activeQuote?.count||0);
     const selectableMax = freeDailyLimitApplies()
       ? Math.min(maxImages, freeDailyState.remaining)
       : maxImages;
-    genCount = Math.min(genCount, Math.max(1, selectableMax));
-    [1, 2, 3, 4, 6, 8, 10, 12].filter(n => n <= maxImages).forEach(n => {
+    if (!generationBusy && !window.creatorTools?.busy()) genCount = Math.min(Math.max(minImages, genCount), Math.max(minImages, selectableMax));
+    document.getElementById('creatorQuantityLabel').textContent = creatorDynamicText('quantity');
+    if (emotions) {
+      const select = document.createElement('select');select.id = 'creatorCountSelect';select.className = 'settings-select';select.setAttribute('aria-labelledby','creatorQuantityLabel');
+      for (let n=minImages;n<=maxImages;n++) {const option=document.createElement('option');option.value=String(n);option.textContent=String(n);option.disabled=freeDailyLimitApplies()&&n>freeDailyState.remaining;select.append(option);}
+      select.value=String(genCount);select.disabled=generationBusy||!!window.creatorTools?.busy()||!freeEmotionAvailable();
+      select.addEventListener('change',()=>{genCount=Number(select.value);renderCountRow();renderBalance();});row.append(select);return;
+    }
+    Array.from({length:maxImages}, (_,i)=>i+1).forEach(n => {
       const el = document.createElement('button');el.type='button';
       const unavailable = freeDailyLimitApplies() && n > freeDailyState.remaining;
       el.className = 'count-opt' + (n === genCount ? ' active' : '') + (unavailable ? ' is-disabled' : '');
       el.textContent = n;
-      el.setAttribute('aria-disabled', String(unavailable));el.disabled=unavailable;el.setAttribute('aria-pressed',String(n===genCount));
+      el.setAttribute('aria-disabled', String(unavailable));el.disabled=unavailable||generationBusy||!!window.creatorTools?.busy();el.setAttribute('aria-pressed',String(n===genCount));
       el.addEventListener('click', () => {
         if (unavailable || generationBusy || window.creatorTools?.busy()) return;
         genCount = n;
@@ -3716,14 +3807,13 @@
     const s = STR[lang];
     const prompt = document.getElementById('promptInput').value.trim();
     if (!prompt) { document.getElementById('promptInput').focus(); return; }
-    const requestedCount=generationPreset==='emotions'&&premiumStudioAccess(true)?6:genCount;
+    const requestedCount=genCount;
     const requestedStyle=premiumStudioAccess()?quickStyle:'';
-    const requestedPreset=premiumStudioAccess(true)?generationPreset:'';
     const cost = genCost(requestedCount);
     if (getBalance() < cost) { openGame(); return; }
     rememberPrompt(prompt);
 
-    generationBusy=true;renderStudio();window.promptTools?.render();
+    generationQuote={count:requestedCount,price:cost/requestedCount,cost};generationBusy=true;renderStudio();window.promptTools?.render();
     generateBtn.disabled = true;
     document.getElementById('countRow').classList.add('locked');
     document.getElementById('genBtnText').textContent = s.generating;
@@ -3757,12 +3847,13 @@
       const res = await fetch(`${BACKEND}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({prompt,count:requestedCount,...window.creatorTools.background(),...(requestedStyle?{style:requestedStyle}:{}),...(requestedPreset?{preset:requestedPreset}:{}),initData:tg?.initData||''})
+        body: JSON.stringify({prompt,count:requestedCount,...window.creatorTools.background(),...(requestedStyle?{style:requestedStyle}:{}),initData:tg?.initData||''})
       });
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        if (errData.freeDaily) applyFreeDailyState(errData.freeDaily);
+        if ('freeDaily' in errData) applyFreeDailyState(errData.freeDaily);
+        if ('freeEmotion' in errData) applyFreeEmotionState(errData.freeEmotion);
         if (errData.code === 'DAILY_FREE_LIMIT') {
           grid.innerHTML = '';
           emptyState.style.display = '';
@@ -3798,7 +3889,8 @@
       } else {
         setBalance(getBalance() - cost);
       }
-      if (data.freeDaily) applyFreeDailyState(data.freeDaily);
+      if ('freeDaily' in data) applyFreeDailyState(data.freeDaily);
+      if ('freeEmotion' in data) applyFreeEmotionState(data.freeEmotion);
       renderResults(data.images);
     } catch (err) {
       grid.classList.add('grid-fading');
@@ -3812,7 +3904,7 @@
     } finally {
       clearInterval(statusInterval);
       clearTimeout(warmupTimeout);
-      generationBusy=false;renderStudio();
+      generationBusy=false;generationQuote=null;renderCountRow();renderStudio();
       generateBtn.disabled = false;
       document.getElementById('countRow').classList.remove('locked');
       renderBalance();
@@ -3942,10 +4034,17 @@
   let packMode = 'new'; // 'new' | 'existing'
   let myPacks = [];
   let myPacksLoaded = false;
+  let myPacksLoadPromise = null;
+  let myPacksLoadError = false;
 
-  async function loadMyPacks() {
-    if (myPacksLoaded) return;
-    try {
+  async function loadMyPacks(force = false) {
+    if (myPacksLoadPromise) {
+      const pending = await myPacksLoadPromise;
+      if (!force) {renderPackSelect();return pending;}
+    }
+    if (myPacksLoaded && !force) {renderPackSelect();return true;}
+    myPacksLoadError = false;
+    myPacksLoadPromise = (async () => {try {
       const res = await fetch(`${BACKEND}/api/my-packs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3953,27 +4052,35 @@
       });
       if (!res.ok) throw new Error();
       const data = await res.json();
-      myPacks = data.packs || [];
+      myPacks = Array.isArray(data.packs) ? data.packs : [];
       myPacksLoaded = true;
+      return true;
     } catch (e) {
-      myPacks = [];
-    }
+      myPacksLoadError = true;
+      return false;
+    } finally {myPacksLoadPromise = null;renderPackSelect();}})();
     renderPackSelect();
+    return myPacksLoadPromise;
   }
 
   function renderPackSelect() {
     const select = document.getElementById('packSelect');
     const empty = document.getElementById('packSelectEmpty');
+    const selectedTarget = select.value;
     select.innerHTML = '';
+    const placeholder = document.createElement('option');placeholder.value='';placeholder.textContent=creatorDynamicText('choosePack');select.appendChild(placeholder);
+    select.disabled=!!myPacksLoadPromise;
+    if (packMode !== 'existing') {select.style.display='none';empty.style.display='none';return;}
     if (myPacks.length === 0) {
       select.style.display = 'none';
       empty.style.display = 'block';
-      empty.textContent = lang === 'ru'
+      empty.textContent = myPacksLoadPromise ? creatorDynamicText('loading') : myPacksLoadError ? libraryText().loadError : lang === 'ru'
         ? 'Пока нет сохранённых паков — создай первый'
         : "No saved packs yet — create your first one";
     } else {
       select.style.display = '';
-      empty.style.display = 'none';
+      empty.style.display = myPacksLoadError ? 'block' : 'none';
+      if (myPacksLoadError) empty.textContent=libraryText().loadError;
       myPacks.forEach(p => {
         const opt = document.createElement('option');
         opt.value = p.short_name;
@@ -3981,6 +4088,7 @@
         select.appendChild(opt);
       });
     }
+    select.value = myPacks.some(p=>p.short_name===selectedTarget) ? selectedTarget : '';
   }
 
   let libraryPacks = [];
@@ -3993,6 +4101,7 @@
   });
   let libraryLoaded = false;
   let libraryLoading = false;
+  let libraryLoadPromise = null;
   function libraryText() { return { ...(LIBRARY_TEXT[lang] || LIBRARY_TEXT.en), ...(LIBRARY_ACTION_TEXT[lang] || LIBRARY_ACTION_TEXT.en), ...(LIBRARY_SEARCH_TEXT[lang] || LIBRARY_SEARCH_TEXT.en) }; }
 
   async function libraryRequest(path, payload) {
@@ -4010,6 +4119,11 @@
   }
 
   async function loadLibrary(force = false) {
+    if (libraryLoadPromise) {await libraryLoadPromise;if (!force) return;}
+    libraryLoadPromise = loadLibraryPage(force);
+    try {return await libraryLoadPromise;} finally {libraryLoadPromise = null;}
+  }
+  async function loadLibraryPage(force = false) {
     const list = document.getElementById('libraryList');
     if (libraryLoading || (libraryLoaded && !force)) return renderLibrary();
     if (!tg?.initData) {
@@ -4020,10 +4134,7 @@
     libraryLoading = true;
     list.innerHTML = '<div class="library-state"><div class="library-spinner" aria-hidden="true"></div>' + libraryText().loading + '</div>';
     try {
-      const response = await libraryRequest('/api/my-packs', {});
-      const data = await response.json();
-      myPacks = Array.isArray(data.packs) ? data.packs : [];
-      myPacksLoaded = true;
+      if (!await loadMyPacks(force)) throw new Error('Packs unavailable');
       libraryPacks = await Promise.all(myPacks.map(async (pack) => {
         try {
           const detailResponse = await libraryRequest('/api/my-packs/stickers', { shortName: pack.short_name });
@@ -4107,7 +4218,7 @@
     orderedPacks.forEach((item) => {
       const pack = item.pack || {};const owner=pack.role!=='contributor';
       const stickers = Array.isArray(item.stickers) ? item.stickers : [];
-      const card = document.createElement('article'); card.className = 'library-pack';
+      const card = document.createElement('article'); card.className = 'library-pack';card.dataset.shortName=pack.shortName;card.tabIndex=-1;
       const head = document.createElement('div'); head.className = 'library-pack-head';
       const title = document.createElement('h3'); title.className = 'library-pack-name'; title.textContent = pack.title || pack.shortName;
       const count = document.createElement('span'); count.className = 'library-pack-count'; count.textContent = libraryText().stickerCount(stickers.length);
@@ -4414,12 +4525,9 @@
     let isNewPack;
 
     if (packMode === 'existing') {
-      if (myPacks.length === 0) {
-        setPackMode('new');
-        document.getElementById('packName').focus();
-        return;
-      }
+      if (!await loadMyPacks()) {showToast(libraryText().loadError);return;}
       const select = document.getElementById('packSelect');
+      if (!select.value || !myPacks.some(p=>p.short_name===select.value)) {showToast(creatorDynamicText('choosePack'));select.focus();return;}
       body.targetPackShortName = select.value;
       isNewPack = false;
     } else {
@@ -4505,7 +4613,7 @@
       <strong style="color:var(--text)">Не хватает $?</strong><br>
       Сыграй в мини-игру «Найди пары» (нажми на баланс), купи $ за Telegram Stars, или спроси про промокод.<br><br>
       <strong style="color:var(--text)">Premium 👑</strong><br>
-      Standard, Luxury и Ultimate дают скидки на генерацию и увеличивают размер партии. Ежедневных монетных подарков нет; Luxury и Ultimate открывают быстрые стили и особые темы. Ultimate создаёт шесть эмоций за 12 монет или автоматический набор из 24 за максимум 48 монет.
+      Цена за стикер: бесплатный план — 5 монет, Standard — 4, Luxury — 3, Ultimate — 2. Бесплатный план допускает 8 стикеров в день и один набор эмоций в рамках этого лимита. Наборы эмоций доступны всем: от 2 до 8 / 6 / 10 / 36 стикеров соответственно. Проверь количество и цену перед созданием. Luxury и Ultimate открывают быстрые стили и особые темы.
       Первый месяц: Standard 21 ⭐, Luxury 65 ⭐, Ultimate 287 ⭐; продление вручную — 32 ⭐, 99 ⭐ и 438 ⭐ соответственно. Кнопка 👑 в шапке.`,
     en: `<strong style="color:var(--text)">How to create stickers:</strong><br>
       1. Describe your idea (or tap "🎲 Random idea")<br>
@@ -4524,7 +4632,7 @@
       <strong style="color:var(--text)">Out of $?</strong><br>
       Play "Match the pairs" (tap the balance), buy $ with Telegram Stars, or ask about a promo code.<br><br>
       <strong style="color:var(--text)">Premium 👑</strong><br>
-      Choose Standard, Luxury, or Ultimate for generation discounts and larger batches. Subscriptions have no daily coin gifts; Luxury and Ultimate unlock quick styles and exclusive themes. Ultimate creates six expressions for 12 coins or an automatic 24-sticker pack for up to 48 coins.
+      Each sticker costs 5 coins on the Free plan, 4 on Standard, 3 on Luxury, or 2 on Ultimate. The Free plan allows 8 stickers per day and one emotion pack within that allowance. Emotion packs are available on every plan: from 2 to 8 / 6 / 10 / 36 stickers respectively. Review the quantity and quote before creating. Luxury and Ultimate unlock quick styles and exclusive themes.
       First month: Standard 21 ⭐, Luxury 65 ⭐, Ultimate 287 ⭐; manual renewals are 32 ⭐, 99 ⭐, and 438 ⭐. Tap the 👑 button in the header.`
   };
 
@@ -4660,6 +4768,7 @@
     if(version!==coinStatusVersion)return false;
     coinPurchase=data.coinPurchase||null;
     premiumState={active:data.active,expiresAt:data.expiresAt,tier:data.tier};
+    applyFreeDailyState(data.freeDaily);applyFreeEmotionState(data.freeEmotion);
     if(data.pricing){
       subPricing={...subPricing,...data.pricing,standard:{...subPricing.standard,...data.pricing.standard},luxury:{...subPricing.luxury,...data.pricing.luxury},ultimate:{...subPricing.ultimate,...data.pricing.ultimate}};
     }
@@ -4717,6 +4826,7 @@
         { ico: '👑', text: s.perkLuxuryBadge, luxe: true },
         { ico: '🎨', text: 'Gold Atelier', luxe: true },
         { ico: '✦', text: studio[10], luxe: true },
+        { ico: '☺', text: creatorDynamicText('emotion')+' · 2–10', luxe: true },
       ];
     }
     if (tier === 'ultimate') {
@@ -4728,14 +4838,14 @@
         { ico: '👑', text: s.perkUltimateBadge, luxe: true },
         { ico: '🎨', text: 'Obsidian Observatory + Origami Atelier', luxe: true },
         { ico: '✦', text: studio[10], luxe: true },
-        { ico: '☺', text: studio[11]+' · '+studio[9], luxe: true },
-        { ico: '✦', text: window.creatorTools?.label(11)+' · 48', luxe: true },
+        { ico: '☺', text: creatorDynamicText('emotion')+' · 2–36', luxe: true },
       ];
     }
     return [
       { ico: '💵', text: s.perkCostPerImage(p.costPerImage) },
       { ico: '🖼️', text: s.perkMaxImages(p.maxImages) },
       { ico: '🎨', text: s.perkStandardStyle },
+      { ico: '☺', text: creatorDynamicText('emotion')+' · 2–6' },
     ];
   }
 
@@ -4832,6 +4942,7 @@
         const data = await res.json();
         if (openVersion !== premiumOpenVersion) return;
         premiumState = { active: data.active, expiresAt: data.expiresAt, tier: data.tier };
+        applyFreeDailyState(data.freeDaily);applyFreeEmotionState(data.freeEmotion);
         if (coinVersion !== coinStatusVersion) return;
         coinPurchase = data.coinPurchase || null;
         ultimateBackendReady = !!data.pricing?.ultimate;
@@ -5330,29 +5441,38 @@
     id:'Pengaturan kreasi|Alat teks|Latar|Putih|Hitam|Warna sendiri|Transparan|Unggah gambar|Stiker satuan|24 emosi · Ultimate|Nama paket|Buat paket 24 stiker|Maksimum 48 koin. Stiker yang gagal dibuat dikembalikan.|Undang kontributor|Salin undangan|Gabung paket|Bergabung dengan paket|Peserta|Keluar dari paket|Hapus|Cabut undangan|Paket bersama|Pemilik|Simpan|Coba lagi|Tindakan belum dikonfirmasi|Transparansi bergantung pada pemisahan latar. Pratinjau sebelum simpan.|PNG, JPEG atau WebP · hingga 4 MB|Mode|Membuat|Selesai|Terhenti',
     tr:'Oluşturma ayarları|Metin araçları|Arka plan|Beyaz|Siyah|Özel renk|Şeffaf|Görsel yükle|Tekli çıkartmalar|24 duygu · Ultimate|Paket adı|24 çıkartmalık paket oluştur|En çok 48 jeton. Oluşturulmayan çıkartmalar iade edilir.|Katılımcı davet et|Daveti kopyala|Pakete katıl|Pakete katıldınız|Katılımcılar|Paketten ayrıl|Kaldır|Daveti iptal et|Ortak paket|Sahip|Kaydet|Tekrar dene|İşlem doğrulanamadı|Şeffaflık arka plan ayırmaya bağlıdır. Kaydetmeden önce inceleyin.|PNG, JPEG veya WebP · en çok 4 MB|Mod|Oluşturuluyor|Tamamlandı|Kesildi'
   };
-  const t=(i)=>(copy[lang]||copy.en).split('|')[i];
-  let jobBusy=false,jobId=null,jobTimer,jobNonce=null,jobPayload=null,uploadBusy=false,joining=false,pollInFlight=false;
+  const t=(i)=>i===9?creatorDynamicText('emotion'):i===11?creatorDynamicText('createPack'):i===12?creatorDynamicText('refund'):(copy[lang]||copy.en).split('|')[i];
+  let jobBusy=false,jobId=null,jobTimer,jobNonce=null,jobPayload=null,activeJobQuote=null,uploadBusy=false,joining=false,pollInFlight=false,awaitingStartRecovery=false,startRecoveryInFlight=false;
   const el=id=>document.getElementById(id);
-  async function request(path,body={}){if(!tg?.initData)throw new Error(libraryText().telegramRequired);const response=await fetchWithTimeout(BACKEND+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,initData:tg.initData})},25000);const result=await response.json();if(!response.ok)throw new Error(result.error||t(25));return result;}
+  function applyAccountResult(result){if(typeof result.balance==='number')setBalance(result.balance);if('freeDaily' in result)applyFreeDailyState(result.freeDaily);if('freeEmotion' in result)applyFreeEmotionState(result.freeEmotion);}
+  function actionError(result){const code=result.code;return code==='FREE_EMOTION_LIMIT'?creatorDynamicText('emotionUsed'):code==='DAILY_FREE_LIMIT'?(FREE_DAILY_EXHAUSTED[lang]||FREE_DAILY_EXHAUSTED.en):code==='PRICE_CHANGED'?creatorDynamicText('priceChanged'):code==='INVITE_UNAVAILABLE'?creatorDynamicText('inviteUnavailable'):['INVITE_FULL','INVITE_LIMIT'].includes(code)?creatorDynamicText('packFull'):code==='INSUFFICIENT_BALANCE'?STR[lang].insufficient:result.error||t(25);}
+  async function request(path,body={}){if(!tg?.initData)throw new Error(libraryText().telegramRequired);const response=await fetchWithTimeout(BACKEND+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,initData:tg.initData})},25000);const result=await response.json();if(!response.ok){applyAccountResult(result);const error=new Error(actionError(result));error.code=result.code;throw error;}return result;}
   function render(){
     el('creatorSettingsLabel').textContent=t(0);el('creatorToolsLabel').textContent=t(1);el('creatorBackgroundLabel').textContent=t(2);
     [...el('creatorBackground').options].forEach((o,i)=>o.textContent=t(3+i));
     el('creatorUploadLabel').textContent=t(7);el('creatorUploadHint').textContent=t(27);el('creatorModeLabel').textContent=t(28);
-    [...el('creatorMode').options].forEach((o,i)=>o.textContent=t(8+i));
-    const ultimate=premiumStudioAccess(true);el('creatorModeRow').hidden=!ultimate;if(!ultimate)el('creatorMode').value='single';
-    el('creatorPackName').placeholder=t(10);el('creatorPackName').setAttribute('aria-label',t(10));el('creatorPackHint').textContent=t(12);el('creatorPackFields').hidden=el('creatorMode').value!=='pack24';
-    el('countRow').hidden=el('creatorMode').value==='pack24';el('premiumEmotionControl').hidden=!ultimate||el('creatorMode').value==='pack24';
-    el('premiumStyle').disabled=generationBusy||jobBusy;el('premiumEmotionSet').disabled=generationBusy||jobBusy;el('countRow').classList.toggle('locked',generationBusy||jobBusy);
+    el('creatorMode').options[0].textContent=t(8);el('creatorMode').options[1].textContent=creatorDynamicText('emotion');
+    el('creatorModeRow').hidden=false;el('creatorMode').options[1].disabled=!freeEmotionAvailable();
+    const emotions=emotionPackSelected(), quote=creatorDynamicText('quote',selectedGenerationQuote());
+    el('creatorPackName').placeholder=t(10);el('creatorPackName').setAttribute('aria-label',t(10));el('creatorPackHint').textContent=quote+'. '+creatorDynamicText('refund');el('creatorPackFields').hidden=!emotions;
+    el('countRow').hidden=false;
+    el('premiumStyle').disabled=generationBusy||jobBusy||!premiumStudioAccess();el('countRow').classList.toggle('locked',generationBusy||jobBusy);
     el('creatorBackgroundColor').disabled=generationBusy||jobBusy;el('creatorPackName').disabled=jobBusy;
     el('creatorBackgroundColor').hidden=el('creatorBackground').value!=='color';el('creatorTransparentHint').textContent=t(26);el('creatorTransparentHint').hidden=el('creatorBackground').value!=='transparent';
     el('creatorBackground').disabled=generationBusy||jobBusy;el('creatorMode').disabled=generationBusy||jobBusy;
     el('creatorUpload').disabled=generationBusy||jobBusy||uploadBusy;
-    if(!generationBusy&&!accountBanned){if(el('creatorMode').value==='pack24'){el('genBtnText').textContent=t(11);generateBtn.disabled=jobBusy||uploadBusy;el('costText').textContent=t(12);}else if(jobBusy||uploadBusy)generateBtn.disabled=true;}
+    const style=el('premiumStyle').selectedOptions[0]?.textContent||studioText()[3],bg=el('creatorBackground').selectedOptions[0]?.textContent||t(3);
+    el('creatorSettingsSummary').textContent=style+' · '+bg+(el('creatorBackground').value==='color'?' '+el('creatorBackgroundColor').value:'');
+    const emotionHint=el('freeEmotionHint');emotionHint.hidden=!freeAccount();
+    if(freeAccount())emotionHint.textContent=!freeEmotionState||!freeDailyState?creatorDynamicText('quotaLoading'):freeDailyState.remaining<2?creatorDynamicText('tooFew'):freeEmotionAvailable()?creatorDynamicText('emotionReady'):creatorDynamicText('emotionUsed');
+    el('costText').textContent=quote;renderFreeDailyHint();
+    if(!generationBusy&&!accountBanned){if(emotions){el('genBtnText').textContent=creatorDynamicText('createPack');generateBtn.disabled=jobBusy||uploadBusy||!freeEmotionAvailable()||freeDailyLimitApplies()&&genCount>freeDailyState.remaining;generateBtn.classList.toggle('insufficient',getBalance()<genCost(genCount)||!freeEmotionAvailable());}else if(jobBusy||uploadBusy)generateBtn.disabled=true;}
     el('creatorJoinButton').textContent=t(15);
   }
   function background(){return {background:el('creatorBackground').value,color:el('creatorBackgroundColor').value};}
   el('creatorBackground').addEventListener('change',render);
-  el('creatorMode').addEventListener('change',()=>{generationPreset='';el('premiumEmotionSet').checked=false;renderCountRow();renderBalance();render();});
+  el('creatorBackgroundColor').addEventListener('input',render);
+  el('creatorMode').addEventListener('change',()=>{generationPreset='';renderCountRow();renderBalance();render();});
   async function upload(file){
     if(!file||uploadBusy||generationBusy||jobBusy)return;
     if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>4*1024*1024){showToast(t(27));return;}
@@ -5360,43 +5480,52 @@
   el('creatorUpload').addEventListener('change',event=>upload(event.target.files[0]));
   async function poll(){
     if(!jobId||pollInFlight)return;clearTimeout(jobTimer);pollInFlight=true;const requestedJob=jobId;
-    try{const data=await request('/api/packs/jobs/status',{id:requestedJob});if(jobId!==requestedJob)return;setBalance(data.balance);const job=data.job;if(!job){jobBusy=false;jobId=null;safeSetItem('stickerCreatorJob','');return;}
-      el('creatorProgress').hidden=false;el('creatorProgressBar').value=job.attempted;el('creatorProgressText').textContent=(job.state==='completed'?t(30):['interrupted','cancelled'].includes(job.state)?t(31):t(29))+' · '+job.attempted+' / 24';
-      if(!['queued','running'].includes(job.state)){jobBusy=false;jobNonce=null;jobPayload=null;safeSetItem('stickerCreatorJob','');currentResults=[];selectedIndices.clear();renderResults(job.images);emptyState.style.display=job.images.length?'none':'';resultsTitle.style.display=job.images.length?'flex':'none';if(job.packLink){myPacksLoaded=false;libraryLoaded=false;showSuccessModal(job.packLink,true);}else if(job.packError)showToast(job.packError);jobId=null;}
+    try{const data=await request('/api/packs/jobs/status',{id:requestedJob});if(jobId!==requestedJob)return;const job=data.job;if(!job){jobBusy=false;jobId=null;activeJobQuote=null;applyAccountResult(data);safeSetItem('stickerCreatorJob','');return;}
+      const total=Number.isFinite(job.total)?job.total:24,attempted=Number.isFinite(job.attempted)?job.attempted:(job.images||[]).length;
+      const cost=Number.isFinite(job.cost)?job.cost:activeJobQuote?.cost??genCost(total);activeJobQuote={count:total,cost,price:cost/total};genCount=total;el('creatorMode').value='pack24';applyAccountResult(data);
+      el('creatorProgress').hidden=false;el('creatorProgressBar').max=total;el('creatorProgressBar').value=attempted;el('creatorProgressText').textContent=(job.state==='completed'?t(30):['interrupted','cancelled'].includes(job.state)?t(31):t(29))+' · '+attempted+' / '+total;
+      if(!['queued','running'].includes(job.state)){jobBusy=false;activeJobQuote=null;jobNonce=null;jobPayload=null;safeSetItem('stickerCreatorJob','');currentResults=[];selectedIndices.clear();const images=job.images||[];renderResults(images);emptyState.style.display=images.length?'none':'';resultsTitle.style.display=images.length?'flex':'none';if(job.packLink){myPacksLoaded=false;libraryLoaded=false;showSuccessModal(job.packLink,true);}else if(job.packError)showToast(job.packError);jobId=null;}
     }catch{el('creatorProgressText').textContent=t(24)+' · '+t(25);}
-    finally{pollInFlight=false;renderBalance();render();if(jobId)jobTimer=setTimeout(poll,4000);}
+    finally{pollInFlight=false;renderCountRow();renderBalance();render();if(jobId)jobTimer=setTimeout(poll,4000);}
   }
   async function startPack(){
-    if(jobBusy||generationBusy||uploadBusy||!premiumStudioAccess(true))return;
+    if(jobBusy||generationBusy||uploadBusy||!freeEmotionAvailable())return;
+    renderCountRow();
     if(window.promptTools&&!window.promptTools.beforeGeneration())return;
     const prompt=el('promptInput').value.trim();if(!prompt){el('promptInput').focus();return;}
-    const title=el('creatorPackName').value.trim();if(!title){el('creatorPackFields').hidden=false;el('creatorSettings').open=true;el('creatorPackName').focus();return;}
-    if(getBalance()<48){openGame();return;}
-    if(!confirm(t(11)+'\n'+t(12)))return;
-    const payload={prompt,title,style:quickStyle||'vector',...background(),expectedCost:48};
+    const title=el('creatorPackName').value.trim();if(!title){el('creatorPackFields').hidden=false;el('creatorPackName').focus();return;}
+    const expectedCost=genCost(genCount);if(getBalance()<expectedCost){openGame();return;}
+    if(!confirm(creatorDynamicText('createPack')+'\n'+creatorDynamicText('quote',{count:genCount,price:genCost(1),cost:expectedCost})+'\n'+creatorDynamicText('refund')))return;
+    const payload={prompt,title,style:quickStyle||'vector',...background(),count:genCount,expectedCost};
     const signature=JSON.stringify(payload);if(jobPayload!==signature){jobPayload=signature;jobNonce=crypto.randomUUID();}
-    jobBusy=true;render();try{const data=await request('/api/packs/jobs/start',{...payload,requestId:jobNonce});jobId=data.id;safeSetItem('stickerCreatorJob',jobId);setBalance(data.balance);await poll();}catch(error){jobBusy=false;showToast(error.message||t(25));renderBalance();render();}
+    activeJobQuote={count:genCount,price:genCost(1),cost:expectedCost};jobBusy=true;renderCountRow();render();try{const data=await request('/api/packs/jobs/start',{...payload,requestId:jobNonce});awaitingStartRecovery=false;jobId=data.id;safeSetItem('stickerCreatorJob',jobId);applyAccountResult(data);el('creatorProgressBar').max=data.total||genCount;await poll();}catch(error){if(!error.code||error.code==='JOB_ALREADY_ACTIVE'){awaitingStartRecovery=true;const recovered=await recoverStart();if(recovered!==false)return;}jobBusy=false;activeJobQuote=null;if(['PRICE_CHANGED','FREE_EMOTION_LIMIT','DAILY_FREE_LIMIT'].includes(error.code))await syncBalanceFromServer(0);showToast(error.message||t(25));renderCountRow();renderBalance();render();}
+  }
+  async function recoverStart(){
+    if(startRecoveryInFlight)return null;startRecoveryInFlight=true;clearTimeout(jobTimer);
+    try{let data=await request('/api/packs/jobs/status',jobNonce?{id:jobNonce}:{});if(!data.job&&jobNonce)data=await request('/api/packs/jobs/status');if(data.job?.id){awaitingStartRecovery=false;jobId=data.job.id;jobBusy=true;safeSetItem('stickerCreatorJob',jobId);await poll();return true;}awaitingStartRecovery=false;jobBusy=false;activeJobQuote=null;applyAccountResult(data);return false;}
+    catch{el('creatorProgress').hidden=false;el('creatorProgressText').textContent=t(25)+' · '+t(24);return null;}
+    finally{startRecoveryInFlight=false;renderCountRow();renderBalance();render();if(awaitingStartRecovery)jobTimer=setTimeout(recoverStart,4000);}
   }
   function beforeGenerate(){if(jobBusy||uploadBusy)return true;if(el('creatorMode').value==='pack24'){startPack();return true;}return false;}
-  async function invite(pack){try{const data=await request('/api/packs/invite',{shortName:pack.shortName});showInvite(data.link);}catch(e){showToast(e.message);}}
-  function showInvite(link){el('creatorInviteLink').value=link;el('creatorInviteCopy').textContent=t(14);openModal(el('creatorInviteModal'));}
+  async function invite(pack,rotate=false){if(rotate&&!confirm(creatorDynamicText('rotateConfirm')))return;try{const data=await request('/api/packs/invite',{shortName:pack.shortName,rotate});showInvite(data.link,data.expiresAt||data.expires_at);}catch(e){showToast(e.message);}}
+  function showInvite(link,expiresAt){el('creatorInviteLink').value=link;el('creatorInviteCopy').textContent=t(14);el('creatorInviteExpiry').textContent=expiresAt?creatorDynamicText('expires',{date:new Date(expiresAt).toLocaleString(lang)}):'';openModal(el('creatorInviteModal'));}
   el('creatorInviteCopy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(el('creatorInviteLink').value);showToast('✓');}catch{el('creatorInviteLink').focus();el('creatorInviteLink').select();}});
   el('creatorInviteClose').addEventListener('click',()=>closeModal(el('creatorInviteModal')));
   async function members(pack){try{const data=await request('/api/packs/members',{shortName:pack.shortName});const list=el('creatorMembersList');list.replaceChildren();el('creatorMembersTitle').textContent=t(17);for(const member of data.members){const row=document.createElement('div');row.className='creator-member';const label=document.createElement('span');label.textContent=String(member.user_id);const remove=document.createElement('button');remove.className='library-action';remove.textContent=t(19);remove.addEventListener('click',async()=>{if(!confirm(t(19)+'?'))return;remove.disabled=true;try{await request('/api/packs/remove-member',{shortName:pack.shortName,memberId:member.user_id});row.remove();}catch(e){remove.disabled=false;showToast(e.message);}});row.append(label,remove);list.append(row);}openModal(el('creatorMembersModal'));}catch(e){showToast(e.message);}}
   el('creatorMembersClose').addEventListener('click',()=>closeModal(el('creatorMembersModal')));
   function libraryActions(pack,actions){const owner=pack.role!=='contributor';const menu=document.createElement('details');menu.className='creator-pack-menu';const summary=document.createElement('summary');summary.textContent=owner?t(13):t(21);menu.append(summary);
     const button=(label,handler)=>{const b=document.createElement('button');b.type='button';b.className='library-action';b.textContent=label;b.addEventListener('click',handler);menu.append(b);};
-    if(owner){button(t(13),()=>invite(pack));button(t(17),()=>members(pack));button(t(20),async()=>{if(!confirm(t(20)+'?'))return;try{await request('/api/packs/revoke-invite',{shortName:pack.shortName});showToast('✓');}catch(e){showToast(e.message);}});}else button(t(18),async()=>{if(!confirm(t(18)+'?'))return;try{await request('/api/packs/remove-member',{shortName:pack.shortName,memberId:tg.initDataUnsafe.user.id});libraryLoaded=false;myPacksLoaded=false;await loadLibrary(true);}catch(e){showToast(e.message);}});
+    if(owner){button(t(13),()=>invite(pack));button(creatorDynamicText('rotate'),()=>invite(pack,true));button(t(17),()=>members(pack));button(t(20),async()=>{if(!confirm(t(20)+'?'))return;try{await request('/api/packs/revoke-invite',{shortName:pack.shortName});showToast('✓');}catch(e){showToast(e.message);}});}else button(t(18),async()=>{if(!confirm(t(18)+'?'))return;try{await request('/api/packs/remove-member',{shortName:pack.shortName,memberId:tg.initDataUnsafe.user.id});libraryLoaded=false;myPacksLoaded=false;await loadLibrary(true);}catch(e){showToast(e.message);}});
     actions.append(menu);
   }
-  let inviteToken='';const query=new URLSearchParams(location.search);const startParam=tg?.initDataUnsafe?.start_param||query.get('tgWebAppStartParam')||(query.get('invite')?'pack_'+query.get('invite'):'');
-  if(/^pack_[A-Za-z0-9_-]{43}$/.test(startParam)){inviteToken=startParam.slice(5);el('creatorJoin').hidden=false;}
-  el('creatorJoinButton').addEventListener('click',async()=>{if(joining)return;joining=true;el('creatorJoinButton').disabled=true;try{await request('/api/packs/join',{token:inviteToken});el('creatorJoin').hidden=true;showToast(t(16));myPacksLoaded=false;libraryLoaded=false;switchMainView('library');}catch(e){showToast(e.message);}finally{joining=false;el('creatorJoinButton').disabled=false;}});
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&jobId)poll();});
-  window.creatorTools={render,background,beforeGenerate,libraryActions,busy:()=>jobBusy||uploadBusy,label:t};
+  const inviteToken=resolvePackInvite(new URLSearchParams(location.search),tg?.initDataUnsafe?.start_param);
+  if(inviteToken)el('creatorJoin').hidden=false;
+  el('creatorJoinButton').addEventListener('click',async()=>{if(joining)return;joining=true;el('creatorJoinButton').disabled=true;try{const data=await request('/api/packs/join',{token:inviteToken});el('creatorJoin').hidden=true;showToast(t(16));myPacksLoaded=false;libraryLoaded=false;libraryFilter='';el('librarySearch').value='';await loadLibrary(true);switchMainView('library');const shortName=data.pack?.shortName||data.shortName||data.pack?.short_name;const card=[...el('libraryList').querySelectorAll('[data-short-name]')].find(node=>node.dataset.shortName===shortName);if(card){card.focus();card.scrollIntoView({behavior:document.documentElement.dataset.motion==='reduced'?'instant':'smooth',block:'nearest'});}}catch(e){showToast(e.message);}finally{joining=false;el('creatorJoinButton').disabled=false;}});
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden){if(jobId)poll();else if(awaitingStartRecovery)recoverStart();}});
+  window.creatorTools={render,background,beforeGenerate,libraryActions,busy:()=>jobBusy||uploadBusy,quote:()=>activeJobQuote,label:t};
   render();
   const savedJob=safeGetItem('stickerCreatorJob');if(/^[a-f0-9-]{36}$/i.test(savedJob)&&tg?.initData){jobId=savedJob;jobBusy=true;poll();}
-  else if(tg?.initData){request('/api/packs/jobs/status').then(data=>{if(data.job&&!jobBusy&&!generationBusy){jobId=data.job.id;jobBusy=true;safeSetItem('stickerCreatorJob',jobId);poll();}}).catch(()=>{});}
+  else if(tg?.initData){jobBusy=true;renderCountRow();render();request('/api/packs/jobs/status').then(data=>{applyAccountResult(data);if(data.job){jobId=data.job.id;safeSetItem('stickerCreatorJob',jobId);poll();}else jobBusy=false;}).catch(()=>{jobBusy=false;}).finally(()=>{renderCountRow();renderBalance();render();});}
 })();
 
   applyLang();
